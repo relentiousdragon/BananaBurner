@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Banana Burner 2979",
+  "version": "2979.0.0",
+  "description": "MORE BANANAAAAA!11!",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "webNavigation",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://bot-hosting.net/panel/*",
+    "https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/bananaburner.js"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://bot-hosting.net/panel/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Banana Burner 2979"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [{
+    "resources": ["injected.js"],
+    "matches": ["https://bot-hosting.net/*"]
+  }]
+}
