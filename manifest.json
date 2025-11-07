@@ -10,8 +10,7 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://bot-hosting.net/panel/*",
-    "https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/bananaburner.js"
+    "https://bot-hosting.net/panel/*"
   ],
   "background": {
     "service_worker": "background.js"
