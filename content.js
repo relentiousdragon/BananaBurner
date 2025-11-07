@@ -32,23 +32,37 @@ class ContentScript {
   }
 
   async checkCloudflare() {
-    const cloudflareIndicators = [
-      document.querySelector('#cf-content'),
-      document.querySelector('.cf-browser-verification'),
-      document.querySelector('#challenge-form'),
-      document.querySelector('.cf-im-under-attack'),
-      document.querySelector('#cf-challenge-running')
+    const selectors = [
+      '#cf-content',
+      '.cf-browser-verification',
+      '#challenge-form',
+      '.cf-im-under-attack',
+      '#cf-challenge-running',
+      'iframe[src*="challenges.cloudflare.com"]',
+      'iframe[src*="turnstile.cloudflare.com"]', 
+      '.turnstile-wrapper',
+      '.hcaptcha-box',
+      '.cf-challenge',
+      'form[action*="/cdn-cgi/challenge-platform"]',
+      'form[action*="/cdn-cgi/challenge"]',
+      'form[action*="/cdn-cgi/l/chk_jschl"]'
     ];
-
-    const hasCloudflare = cloudflareIndicators.some(indicator => 
-      indicator && indicator.offsetParent !== null
-    );
-
-    if (!hasCloudflare) {
-      this.cloudflareChecked = true;
-      return true;
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent && mainContent.offsetParent !== null) {
+      const text = mainContent.textContent || '';
+      if (/verify you are human|needs to review the security of your connection|cloudflare security challenge/i.test(text)) {
+        return false;
+      }
     }
-    return false;
+
+    const iframes = Array.from(document.querySelectorAll('iframe'));
+    const hasChallengeIframe = iframes.some(iframe => iframe.src && iframe.src.includes('challenges.cloudflare.com'));
+    if (hasChallengeIframe) {
+      return false;
+    }
+
+    this.cloudflareChecked = true;
+    return true;
   }
 
   async waitForCloudflareToClear() {
