@@ -1,4 +1,4 @@
-const SCRIPT_URL = 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/bananaburner.js';
+const SCRIPT_URL = 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/injected.js';
 const CACHE_KEY = 'bananaburner_script_cache';
 const CACHE_TIMESTAMP_KEY = 'bananaburner_script_timestamp';
 const CACHE_DURATION = 60 * 60 * 1000;
