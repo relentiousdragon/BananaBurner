@@ -91,7 +91,7 @@ class ScriptManager {
 
     extractVersion(script) {
         const versionMatch = script.match(/BananaBurner\s+(\d+)/);
-        return versionMatch ? versionMatch[1] : '2979.0.0';
+        return versionMatch ? versionMatch[1] : '2979.0.1';
     }
 
     async getScript() {
