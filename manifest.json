@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Banana Burner 2979",
-  "version": "2979.0.0",
+  "version": "2979.0.1",
   "description": "MORE BANANAAAAA!11!",
   "permissions": [
     "activeTab",
