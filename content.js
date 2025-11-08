@@ -32,47 +32,95 @@ class ContentScript {
   }
 
   async checkCloudflare() {
-    const selectors = [
+    const cloudflareSelectors = [
       '#cf-content',
       '.cf-browser-verification',
       '#challenge-form',
       '.cf-im-under-attack',
       '#cf-challenge-running',
-      'iframe[src*="challenges.cloudflare.com"]',
-      'iframe[src*="turnstile.cloudflare.com"]', 
-      '.turnstile-wrapper',
-      '.hcaptcha-box',
       '.cf-challenge',
-      'form[action*="/cdn-cgi/challenge-platform"]',
-      'form[action*="/cdn-cgi/challenge"]',
-      'form[action*="/cdn-cgi/l/chk_jschl"]'
+      '.turnstile-wrapper',
+      '.hcaptcha-box'
     ];
-    const mainContent = document.querySelector('.main-content');
-    if (mainContent && mainContent.offsetParent !== null) {
-      const text = mainContent.textContent || '';
-      if (/verify you are human|needs to review the security of your connection|cloudflare security challenge/i.test(text)) {
-        return false;
+
+    const cloudflareIframeUrls = [
+      'challenges.cloudflare.com',
+      'turnstile.cloudflare.com',
+      '/cdn-cgi/challenge-platform',
+      '/cdn-cgi/challenge',
+      '/cdn-cgi/l/chk_jschl'
+    ];
+
+    const cloudflareTextPatterns = [
+      /verify you are human/i,
+      /complete the action below/i,
+      /cloudflare security challenge/i,
+      /verifying you are human/i,
+      /please complete the security check/i,
+      /just checking your browser/i,
+      /you will be redirected/i,
+      /ddos protection by cloudflare/i
+    ];
+
+    for (const selector of cloudflareSelectors) {
+      if (document.querySelector(selector)) {
+        console.log('Banana Burner: Found Cloudflare element:', selector);
+        return true; 
       }
     }
 
-    const iframes = Array.from(document.querySelectorAll('iframe'));
-    const hasChallengeIframe = iframes.some(iframe => iframe.src && iframe.src.includes('challenges.cloudflare.com'));
-    if (hasChallengeIframe) {
-      return false;
+    const iframes = document.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      const src = iframe.src || '';
+      if (cloudflareIframeUrls.some(url => src.includes(url))) {
+        console.log('Banana Burner: Found Cloudflare iframe:', src);
+        return true; 
+      }
+    }
+
+    const forms = document.querySelectorAll('form');
+    for (const form of forms) {
+      const action = form.getAttribute('action') || '';
+      if (cloudflareIframeUrls.some(url => action.includes(url))) {
+        console.log('Banana Burner: Found Cloudflare form:', action);
+        return true; 
+      }
+    }
+
+    const pageText = document.body.innerText || document.documentElement.innerText || '';
+    for (const pattern of cloudflareTextPatterns) {
+      if (pattern.test(pageText)) {
+        console.log('Banana Burner: Found Cloudflare text:', pattern);
+        return true; 
+      }
+    }
+
+    const challengeIndicators = [
+      document.querySelector('input[name="jschl_answer"]'),
+      document.querySelector('input[name="r"]'),
+      document.querySelector('[id*="cf-"]'),
+      document.querySelector('[class*="cf-"]')
+    ];
+
+    if (challengeIndicators.some(indicator => indicator !== null)) {
+      console.log('Banana Burner: Found Cloudflare challenge indicator');
+      return true; 
     }
 
     this.cloudflareChecked = true;
-    return true;
+    return false; 
   }
 
   async waitForCloudflareToClear() {
     return new Promise((resolve) => {
       const checkInterval = setInterval(async () => {
-        const isClear = await this.checkCloudflare();
-        if (isClear) {
+        const hasCloudflare = await this.checkCloudflare();
+        if (!hasCloudflare) {
           clearInterval(checkInterval);
           console.log('Banana Burner: Cloudflare cleared, injecting...');
           resolve();
+        } else {
+          console.log('Banana Burner: Still waiting for Cloudflare to clear...');
         }
       }, 1000);
 
