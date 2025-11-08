@@ -122,7 +122,7 @@ class ScriptManager {
 
     async getVersion() {
         const version = await this.getFromStorage('scriptVersion', true);
-        return version || '2979.0.0';
+        return version || '2979.?.?';
     }
 
     async getLastUpdated() {
