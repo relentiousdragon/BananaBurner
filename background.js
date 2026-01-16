@@ -175,14 +175,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ success: true });
             return true;
 
-        case 'sendNotification':
-            chrome.notifications.create({
+        case 'sendNotification': {
+            console.log('Banana Burner: Received notification request:', request);
+
+            const notificationOptions = {
                 type: 'basic',
-                iconUrl: 'icons/icon128.png',
+                iconUrl: chrome.runtime.getURL('icons/icon128.png'),
                 title: request.title || 'Banana Burner',
-                message: request.message || ''
+                message: request.message || '',
+                priority: 2
+            };
+
+            chrome.notifications.create(notificationOptions, (notificationId) => {
+                if (chrome.runtime.lastError) {
+                    const error = chrome.runtime.lastError.message;
+                    console.error('Banana Burner: Primary notification failed:', error);
+
+                    console.log('Banana Burner: Attempting fallback without icon...');
+                    chrome.notifications.create({
+                        type: 'basic',
+                        iconUrl: '',
+                        title: (request.title || 'Banana Burner') + ' (Fallback)',
+                        message: request.message || ''
+                    }, (fallbackId) => {
+                        if (chrome.runtime.lastError) {
+                            console.error('Banana Burner: Fallback notification also failed:', chrome.runtime.lastError.message);
+                        } else {
+                            console.log('Banana Burner: Fallback notification created:', fallbackId);
+                        }
+                    });
+                } else {
+                    console.log('Banana Burner: Notification created successfully:', notificationId);
+                }
             });
-            sendResponse({ success: true });
+            sendResponse({ success: true, logged: true });
             return true;
+        }
     }
 });
