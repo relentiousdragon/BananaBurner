@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Banana Burner 2979",
-  "version": "2979.0.1",
+  "version": "2979.0.2",
   "description": "MORE BANANAAAAA!11!",
   "permissions": [
     "activeTab",
     "storage",
     "webNavigation",
-    "scripting"
+    "scripting",
+    "notifications"
   ],
   "host_permissions": [
     "https://bot-hosting.net/panel/*"
@@ -17,8 +18,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://bot-hosting.net/panel/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://bot-hosting.net/panel/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start"
     }
   ],
@@ -31,8 +36,14 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "web_accessible_resources": [{
-    "resources": ["injected.js"],
-    "matches": ["https://bot-hosting.net/*"]
-  }]
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "injected.js"
+      ],
+      "matches": [
+        "https://bot-hosting.net/*"
+      ]
+    }
+  ]
 }
