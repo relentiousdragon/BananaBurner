@@ -2,12 +2,21 @@ class ContentScript {
   constructor() {
     this.scriptInjected = false;
     this.cloudflareChecked = false;
+    this.setupMessageBridge();
     this.init();
   }
 
   async init() {
-    const response = await this.sendMessage({ action: 'getStatus' });
-    if (!response.enabled) return;
+    console.log('Banana Burner: Content script initialized, checking status...');
+    const response = await this.sendMessage({ action: 'getStatus' }).catch(err => {
+      console.error('Banana Burner: Failed to get status from background:', err);
+      return { enabled: true };
+    });
+
+    if (!response.enabled) {
+      console.log('Banana Burner: Extension is disabled');
+      return;
+    }
 
     console.log('Banana Burner: Starting injection process...');
 
@@ -16,21 +25,28 @@ class ContentScript {
     });
 
     this.setupMutationObserver();
-    this.setupMessageBridge();
   }
 
   setupMessageBridge() {
     window.addEventListener('message', (event) => {
-      if (event.source !== window || !event.data || event.data.source !== 'banana-burner') return;
+      if (!event.data || event.data.source !== 'banana-burner') return;
+
+      console.log('Banana Burner: Bridge caught message:', event.data.action, event.data);
 
       if (event.data.action === 'sendNotification') {
         this.sendMessage({
           action: 'sendNotification',
           title: event.data.title,
           message: event.data.message
+        }).then(response => {
+          console.log('Banana Burner: Background notification response:', response);
+        }).catch(err => {
+          console.error('Banana Burner: Bridge error forwarding notification:', err);
         });
       }
     });
+
+    window.bn_bridge_alive = true;
   }
 
   setupMutationObserver() {
@@ -166,14 +182,29 @@ class ContentScript {
   }
 
   sendMessage(message) {
+    if (!chrome.runtime || !chrome.runtime.id) {
+      console.warn('Banana Burner: Bridge lost connection to extension. Please refresh the page.');
+      return Promise.reject(new Error('Context invalidated'));
+    }
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(message, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(response);
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          if (chrome.runtime.lastError) {
+            const err = chrome.runtime.lastError;
+            if (err.message.includes('context invalidated')) {
+              console.warn('Banana Burner: Extension reloaded. Please refresh the page to restore notifications.');
+            }
+            reject(err);
+          } else {
+            resolve(response);
+          }
+        });
+      } catch (e) {
+        if (e.message.includes('context invalidated')) {
+          console.warn('Banana Burner: Bridge severed by extension reload. Please refresh the page.');
         }
-      });
+        reject(e);
+      }
     });
   }
 }
