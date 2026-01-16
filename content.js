@@ -6,7 +6,7 @@ class ContentScript {
   }
 
   async init() {
-    const response = await this.sendMessage({action: 'getStatus'});
+    const response = await this.sendMessage({ action: 'getStatus' });
     if (!response.enabled) return;
 
     console.log('Banana Burner: Starting injection process...');
@@ -16,6 +16,21 @@ class ContentScript {
     });
 
     this.setupMutationObserver();
+    this.setupMessageBridge();
+  }
+
+  setupMessageBridge() {
+    window.addEventListener('message', (event) => {
+      if (event.source !== window || !event.data || event.data.source !== 'banana-burner') return;
+
+      if (event.data.action === 'sendNotification') {
+        this.sendMessage({
+          action: 'sendNotification',
+          title: event.data.title,
+          message: event.data.message
+        });
+      }
+    });
   }
 
   setupMutationObserver() {
@@ -65,7 +80,7 @@ class ContentScript {
     for (const selector of cloudflareSelectors) {
       if (document.querySelector(selector)) {
         console.log('Banana Burner: Found Cloudflare element:', selector);
-        return true; 
+        return true;
       }
     }
 
@@ -74,7 +89,7 @@ class ContentScript {
       const src = iframe.src || '';
       if (cloudflareIframeUrls.some(url => src.includes(url))) {
         console.log('Banana Burner: Found Cloudflare iframe:', src);
-        return true; 
+        return true;
       }
     }
 
@@ -83,7 +98,7 @@ class ContentScript {
       const action = form.getAttribute('action') || '';
       if (cloudflareIframeUrls.some(url => action.includes(url))) {
         console.log('Banana Burner: Found Cloudflare form:', action);
-        return true; 
+        return true;
       }
     }
 
@@ -91,7 +106,7 @@ class ContentScript {
     for (const pattern of cloudflareTextPatterns) {
       if (pattern.test(pageText)) {
         console.log('Banana Burner: Found Cloudflare text:', pattern);
-        return true; 
+        return true;
       }
     }
 
@@ -104,11 +119,11 @@ class ContentScript {
 
     if (challengeIndicators.some(indicator => indicator !== null)) {
       console.log('Banana Burner: Found Cloudflare challenge indicator');
-      return true; 
+      return true;
     }
 
     this.cloudflareChecked = true;
-    return false; 
+    return false;
   }
 
   async waitForCloudflareToClear() {
@@ -138,13 +153,13 @@ class ContentScript {
     try {
       const script = document.createElement('script');
       script.src = chrome.runtime.getURL('injected.js');
-      script.onload = function() {
+      script.onload = function () {
         this.remove();
       };
       (document.head || document.documentElement).appendChild(script);
       this.scriptInjected = true;
       console.log('Banana Burner: Bananas injected successfully! 🍌');
-      this.sendMessage({action: 'injectionComplete'});
+      this.sendMessage({ action: 'injectionComplete' });
     } catch (error) {
       console.error('Banana Burner: Failed to inject script:', error);
     }
