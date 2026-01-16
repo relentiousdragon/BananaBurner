@@ -16,22 +16,22 @@ class ScriptManager {
     async migrateStorage() {
         try {
             const syncData = await chrome.storage.sync.get([
-                'extensionEnabled', 
-                CACHE_KEY, 
+                'extensionEnabled',
+                CACHE_KEY,
                 CACHE_TIMESTAMP_KEY,
                 'scriptVersion'
             ]);
-            
+
             if (syncData[CACHE_KEY]) {
                 await chrome.storage.local.set({
                     [CACHE_KEY]: syncData[CACHE_KEY],
                     [CACHE_TIMESTAMP_KEY]: syncData[CACHE_TIMESTAMP_KEY],
                     scriptVersion: syncData.scriptVersion
                 });
-                
+
                 await chrome.storage.sync.remove([CACHE_KEY, CACHE_TIMESTAMP_KEY, 'scriptVersion']);
             }
-            
+
             if (syncData.extensionEnabled === undefined) {
                 await chrome.storage.sync.set({ extensionEnabled: true });
             }
@@ -69,9 +69,9 @@ class ScriptManager {
             console.log('Banana Burner: Updating script from GitHub...');
             const response = await fetch(SCRIPT_URL + (force ? `?t=${Date.now()}` : ''));
             if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            
+
             const script = await response.text();
-            
+
             if (!script || script.length === 0) {
                 throw new Error('Empty script received');
             }
@@ -91,19 +91,19 @@ class ScriptManager {
 
     extractVersion(script) {
         const versionMatch = script.match(/BananaBurner\s+(\d+)/);
-        return versionMatch ? versionMatch[1] : '2979.0.1';
+        return versionMatch ? versionMatch[1] : '2979.0.2';
     }
 
     async getScript() {
         try {
             await this.checkForUpdates();
             const cachedScript = await this.getFromStorage(CACHE_KEY, true);
-            
+
             if (!cachedScript) {
                 const result = await this.updateScript();
                 return result.script || '';
             }
-            
+
             return cachedScript;
         } catch (error) {
             console.error('Banana Burner: Failed to get script:', error);
@@ -147,7 +147,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'getScript':
             scriptManager.getScript().then(script => sendResponse({ script }));
             return true;
-        
+
         case 'getStatus':
             Promise.all([
                 scriptManager.isEnabled(),
@@ -157,21 +157,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ enabled, version, lastUpdated });
             });
             return true;
-        
+
         case 'setEnabled':
             scriptManager.setEnabled(request.enabled).then(() => {
                 sendResponse({ success: true });
             });
             return true;
-        
+
         case 'forceUpdate':
             scriptManager.updateScript(true).then(result => {
                 sendResponse(result);
             });
             return true;
-        
+
         case 'injectionComplete':
             console.log('Banana Burner: Script injected successfully!');
+            sendResponse({ success: true });
+            return true;
+
+        case 'sendNotification':
+            chrome.notifications.create({
+                type: 'basic',
+                iconUrl: 'icons/icon128.png',
+                title: request.title || 'Banana Burner',
+                message: request.message || ''
+            });
             sendResponse({ success: true });
             return true;
     }
