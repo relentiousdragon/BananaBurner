@@ -3,6 +3,8 @@ const CACHE_KEY = 'bananaburner_script_cache';
 const CACHE_TIMESTAMP_KEY = 'bananaburner_script_timestamp';
 const CACHE_DURATION = 60 * 60 * 1000;
 
+const activeWebSockets = new Map();
+
 class ScriptManager {
     constructor() {
         this.initialize();
@@ -11,6 +13,51 @@ class ScriptManager {
     async initialize() {
         await this.migrateStorage();
         await this.checkForUpdates();
+        await this.setupHeaderRules();
+    }
+
+    async setupHeaderRules() {
+        const rules = [
+            {
+                id: 1,
+                priority: 1,
+                action: {
+                    type: 'modifyHeaders',
+                    requestHeaders: [
+                        { header: 'Origin', operation: 'set', value: 'https://control.bot-hosting.net' },
+                        { header: 'Referer', operation: 'set', value: 'https://control.bot-hosting.net/' }
+                    ]
+                },
+                condition: {
+                    urlFilter: '*bot-hosting.net*',
+                    resourceTypes: ['xmlhttprequest', 'websocket']
+                }
+            },
+            {
+                id: 2,
+                priority: 2,
+                action: {
+                    type: 'modifyHeaders',
+                    requestHeaders: [
+                        { header: 'Host', operation: 'set', value: 'control.bot-hosting.net' }
+                    ]
+                },
+                condition: {
+                    urlFilter: 'control.bot-hosting.net/api/*',
+                    resourceTypes: ['xmlhttprequest']
+                }
+            }
+        ];
+
+        try {
+            await chrome.declarativeNetRequest.updateDynamicRules({
+                removeRuleIds: rules.map(r => r.id),
+                addRules: rules
+            });
+            console.log('Banana Burner: Header modification rules applied.');
+        } catch (error) {
+            console.error('Banana Burner: Failed to apply header rules:', error);
+        }
     }
 
     async migrateStorage() {
@@ -91,7 +138,7 @@ class ScriptManager {
 
     extractVersion(script) {
         const versionMatch = script.match(/BananaBurner\s+(\d+)/);
-        return versionMatch ? versionMatch[1] : '2979.0.2';
+        return versionMatch ? versionMatch[1] : '2979.0.3';
     }
 
     async getScript() {
@@ -209,6 +256,69 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
             });
             sendResponse({ success: true, logged: true });
+            return true;
+        }
+
+        case 'proxyFetch': {
+            const { url, options } = request;
+            console.log('Banana Burner: Proxying fetch to:', url);
+
+            fetch(url, options)
+                .then(async response => {
+                    const status = response.status;
+                    const ok = response.ok;
+                    const statusText = response.statusText;
+                    let data;
+                    const contentType = response.headers.get('content-type');
+
+                    if (contentType && contentType.includes('application/json')) {
+                        data = await response.json();
+                    } else {
+                        data = await response.text();
+                    }
+
+                    sendResponse({ success: true, status, ok, statusText, data });
+                })
+                .catch(error => {
+                    console.error('Banana Burner: Proxy fetch error:', error);
+                    sendResponse({ success: false, error: error.message });
+                });
+            return true;
+        }
+
+        case 'wsAction': {
+            const { subAction, url, identifier, payload } = request;
+            const socketKey = `${sender.tab.id}-${identifier}`;
+
+            if (subAction === 'connect') {
+                try {
+                    if (activeWebSockets.has(socketKey)) {
+                        try { activeWebSockets.get(socketKey).close(); } catch (e) { }
+                    }
+                    const ws = new WebSocket(url);
+                    activeWebSockets.set(socketKey, ws);
+                    ws.onopen = () => chrome.tabs.sendMessage(sender.tab.id, { source: 'banana-burner-ws', identifier, event: 'open' }).catch(() => { });
+                    ws.onmessage = (e) => chrome.tabs.sendMessage(sender.tab.id, { source: 'banana-burner-ws', identifier, event: 'message', data: e.data }).catch(() => { });
+                    ws.onerror = () => chrome.tabs.sendMessage(sender.tab.id, { source: 'banana-burner-ws', identifier, event: 'error' }).catch(() => { });
+                    ws.onclose = () => {
+                        chrome.tabs.sendMessage(sender.tab.id, { source: 'banana-burner-ws', identifier, event: 'close' }).catch(() => { });
+                        activeWebSockets.delete(socketKey);
+                    };
+                    sendResponse({ success: true });
+                } catch (e) {
+                    sendResponse({ success: false, error: e.message });
+                }
+            } else if (subAction === 'send') {
+                const ws = activeWebSockets.get(socketKey);
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(typeof payload === 'string' ? payload : JSON.stringify(payload));
+                    sendResponse({ success: true });
+                } else sendResponse({ success: false, error: 'Not connected' });
+            } else if (subAction === 'close') {
+                const ws = activeWebSockets.get(socketKey);
+                if (ws) { ws.close(); activeWebSockets.delete(socketKey); }
+                sendResponse({ success: true });
+            }
             return true;
         }
     }
