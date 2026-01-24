@@ -43,6 +43,36 @@ class ContentScript {
         }).catch(err => {
           console.error('Banana Burner: Bridge error forwarding notification:', err);
         });
+      } else if (event.data.action === 'proxyFetch') {
+        this.sendMessage({
+          action: 'proxyFetch',
+          url: event.data.url,
+          options: event.data.options
+        }).then(response => {
+          window.postMessage({
+            source: 'banana-burner-response',
+            requestId: event.data.requestId,
+            response: response
+          }, '*');
+        }).catch(err => {
+          window.postMessage({
+            source: 'banana-burner-response',
+            requestId: event.data.requestId,
+            response: { success: false, error: err.message }
+          }, '*');
+        });
+      } else if (event.data.action === 'wsAction') {
+        this.sendMessage({
+          action: 'wsAction',
+          subAction: event.data.subAction,
+          url: event.data.url,
+          identifier: event.data.identifier,
+          payload: event.data.payload
+        }).then(response => {
+          if (event.data.requestId) {
+            window.postMessage({ source: 'banana-burner-response', requestId: event.data.requestId, response }, '*');
+          }
+        });
       }
     });
 
@@ -214,6 +244,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log('Banana Burner: Force injection requested');
     const contentScript = new ContentScript();
     sendResponse({ success: true });
+  } else if (request.source === 'banana-burner-ws') {
+    window.postMessage(request, '*');
   }
 });
 
