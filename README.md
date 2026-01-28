@@ -1,2 +1,2 @@
-# Extension Version: 2979.0.3
-# Script Version: 1.8
+# Extension Version: 2979.0.4
+# Script Version: 2.0
