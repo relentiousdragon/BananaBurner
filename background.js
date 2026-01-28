@@ -138,7 +138,7 @@ class ScriptManager {
 
     extractVersion(script) {
         const versionMatch = script.match(/BananaBurner\s+(\d+)/);
-        return versionMatch ? versionMatch[1] : '2979.0.3';
+        return versionMatch ? versionMatch[1] : '2979.0.4';
     }
 
     async getScript() {
@@ -263,8 +263,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             const { url, options } = request;
             console.log('Banana Burner: Proxying fetch to:', url);
 
-            fetch(url, options)
-                .then(async response => {
+            (async () => {
+                try {
+                    const targetUrl = new URL(url);
+                    if (targetUrl.hostname.includes('bot-hosting.net')) {
+                        const cookies = await chrome.cookies.getAll({ domain: targetUrl.hostname });
+                        const xsrfCookie = cookies.find(c => c.name === 'XSRF-TOKEN');
+                        if (xsrfCookie) {
+                            options.headers = options.headers || {};
+                            options.headers['X-XSRF-TOKEN'] = decodeURIComponent(xsrfCookie.value);
+                        }
+                    }
+
+                    const response = await fetch(url, { ...options, credentials: 'include' });
                     const status = response.status;
                     const ok = response.ok;
                     const statusText = response.statusText;
@@ -278,11 +289,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     }
 
                     sendResponse({ success: true, status, ok, statusText, data });
-                })
-                .catch(error => {
+                } catch (error) {
                     console.error('Banana Burner: Proxy fetch error:', error);
                     sendResponse({ success: false, error: error.message });
-                });
+                }
+            })();
             return true;
         }
 
