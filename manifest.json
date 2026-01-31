@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Banana Burner 2979",
-  "version": "2979.0.4",
+  "version": "2979.0.5",
   "description": "MORE BANANAAAAA!11!",
   "permissions": [
     "activeTab",
@@ -46,7 +46,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "injected.js"
+        "injected.js",
+        "osrc_hook.js"
       ],
       "matches": [
         "https://bot-hosting.net/*",
