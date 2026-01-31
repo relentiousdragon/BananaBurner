@@ -14,6 +14,46 @@ class ScriptManager {
         await this.migrateStorage();
         await this.checkForUpdates();
         await this.setupHeaderRules();
+        await this.setupOverrideRules();
+    }
+
+    async setupOverrideRules() {
+        const enabled = await this.isEnabled();
+        const override = await this.isOverrideSRCEnabled();
+
+        if (enabled && override) {
+            const rule = {
+                id: 3,
+                priority: 3,
+                action: {
+                    type: 'redirect',
+                    redirect: { extensionPath: '/injected.js' }
+                },
+                condition: {
+                    urlFilter: 'bot-hosting.net/panel/assets/index*.js',
+                    resourceTypes: ['script']
+                }
+            };
+
+            try {
+                await chrome.declarativeNetRequest.updateDynamicRules({
+                    removeRuleIds: [3],
+                    addRules: [rule]
+                });
+                console.log('Banana Burner: Override redirection rule applied.');
+            } catch (error) {
+                console.error('Banana Burner: Failed to apply override rule:', error);
+            }
+        } else {
+            try {
+                await chrome.declarativeNetRequest.updateDynamicRules({
+                    removeRuleIds: [3]
+                });
+                console.log('Banana Burner: Override redirection rule removed.');
+            } catch (error) {
+                console.error('Banana Burner: Failed to remove override rule:', error);
+            }
+        }
     }
 
     async setupHeaderRules() {
@@ -80,7 +120,12 @@ class ScriptManager {
             }
 
             if (syncData.extensionEnabled === undefined) {
-                await chrome.storage.sync.set({ extensionEnabled: true });
+                await chrome.storage.sync.set({
+                    extensionEnabled: true,
+                    overrideSRCEnabled: true
+                });
+            } else if ((await this.getFromStorage('overrideSRCEnabled', false)) === undefined) {
+                await this.setOverrideSRC(true);
             }
         } catch (error) {
             console.log('Banana Burner: Migration completed or not needed');
@@ -138,7 +183,7 @@ class ScriptManager {
 
     extractVersion(script) {
         const versionMatch = script.match(/BananaBurner\s+(\d+)/);
-        return versionMatch ? versionMatch[1] : '2979.0.4';
+        return versionMatch ? versionMatch[1] : '2979.0.5';
     }
 
     async getScript() {
@@ -165,6 +210,17 @@ class ScriptManager {
 
     async setEnabled(enabled) {
         await this.setInStorage('extensionEnabled', enabled, false);
+        await this.setupOverrideRules();
+    }
+
+    async isOverrideSRCEnabled() {
+        const enabled = await this.getFromStorage('overrideSRCEnabled', false);
+        return enabled === true;
+    }
+
+    async setOverrideSRC(enabled) {
+        await this.setInStorage('overrideSRCEnabled', enabled, false);
+        await this.setupOverrideRules();
     }
 
     async getVersion() {
@@ -198,10 +254,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'getStatus':
             Promise.all([
                 scriptManager.isEnabled(),
+                scriptManager.isOverrideSRCEnabled(),
                 scriptManager.getVersion(),
                 scriptManager.getLastUpdated()
-            ]).then(([enabled, version, lastUpdated]) => {
-                sendResponse({ enabled, version, lastUpdated });
+            ]).then(([enabled, overrideSRC, version, lastUpdated]) => {
+                sendResponse({ enabled, overrideSRC, version, lastUpdated });
+            });
+            return true;
+
+        case 'setOverrideSRC':
+            scriptManager.setOverrideSRC(request.enabled).then(() => {
+                sendResponse({ success: true });
             });
             return true;
 
