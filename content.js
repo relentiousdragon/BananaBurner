@@ -10,7 +10,7 @@ class ContentScript {
     console.log('Banana Burner: Content script initialized, checking status...');
     const response = await this.sendMessage({ action: 'getStatus' }).catch(err => {
       console.error('Banana Burner: Failed to get status from background:', err);
-      return { enabled: true };
+      return { enabled: true, overrideSRC: false };
     });
 
     if (!response.enabled) {
@@ -18,6 +18,13 @@ class ContentScript {
       return;
     }
 
+    if (response.overrideSRC) {
+      this.injectLocalStorageHook();
+      console.log('Banana Burner: OverrideSRC enabled, redirection rule should handle injection.');
+      return;
+    }
+
+    localStorage.setItem('OSRC', 'false');
     console.log('Banana Burner: Starting injection process...');
 
     this.waitForCloudflareToClear().then(() => {
@@ -25,6 +32,22 @@ class ContentScript {
     });
 
     this.setupMutationObserver();
+  }
+
+  injectLocalStorageHook() {
+    console.log('Banana Burner: Injecting OSRC localStorage hook via external script...');
+    try {
+      localStorage.setItem('OSRC', 'true');
+
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL('osrc_hook.js');
+      script.onload = function () {
+        this.remove();
+      };
+      (document.head || document.documentElement).appendChild(script);
+    } catch (error) {
+      console.error('Banana Burner: Failed to inject OSRC hook:', error);
+    }
   }
 
   setupMessageBridge() {
