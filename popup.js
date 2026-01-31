@@ -15,6 +15,7 @@ class PopupManager {
   cacheElements() {
     this.elements = {
       toggleEnabled: document.getElementById('toggleEnabled'),
+      toggleOverrideSRC: document.getElementById('toggleOverrideSRC'),
       forceInject: document.getElementById('forceInject'),
       forceUpdate: document.getElementById('forceUpdate'),
       version: document.getElementById('version'),
@@ -22,19 +23,30 @@ class PopupManager {
       lastUpdated: document.getElementById('lastUpdated'),
       message: document.getElementById('message'),
       siteIndicator: document.getElementById('siteIndicator'),
-      siteStatus: document.getElementById('siteStatus')
+      siteStatus: document.getElementById('siteStatus'),
+      rowOverrideSRC: document.getElementById('rowOverrideSRC'),
+      container: document.querySelector('.container')
     };
   }
 
   async loadStatus() {
     try {
       const response = await this.sendMessage({ action: 'getStatus' });
-      
+
       this.elements.toggleEnabled.checked = response.enabled;
+      this.elements.toggleOverrideSRC.checked = response.overrideSRC;
       this.elements.scriptVersion.textContent = response.version;
       this.elements.version.textContent = response.version;
       this.elements.lastUpdated.textContent = response.lastUpdated;
-      
+
+      this.elements.container.classList.add('no-transition');
+      this.updateButtonVisibility(response.overrideSRC);
+      this.updateToggleVisibility(response.enabled);
+
+      setTimeout(() => {
+        this.elements.container.classList.remove('no-transition');
+      }, 50);
+
     } catch (error) {
       this.showMessage('Failed to load status', 'error');
     }
@@ -43,6 +55,10 @@ class PopupManager {
   setupEventListeners() {
     this.elements.toggleEnabled.addEventListener('change', (e) => {
       this.setEnabled(e.target.checked);
+    });
+
+    this.elements.toggleOverrideSRC.addEventListener('change', (e) => {
+      this.setOverrideSRC(e.target.checked);
     });
 
     this.elements.forceInject.addEventListener('click', () => {
@@ -58,7 +74,7 @@ class PopupManager {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       this.currentTab = tab;
-      
+
       if (tab.url && tab.url.includes('bot-hosting.net/panel')) {
         this.elements.siteIndicator.className = 'site-indicator on-site';
         this.elements.siteStatus.textContent = 'On Bot-Hosting panel';
@@ -75,18 +91,37 @@ class PopupManager {
 
   async setEnabled(enabled) {
     try {
-      await this.sendMessage({ 
-        action: 'setEnabled', 
-        enabled 
+      await this.sendMessage({
+        action: 'setEnabled',
+        enabled
       });
-      
+
       this.showMessage(
         `Extension ${enabled ? 'enabled' : 'disabled'}`,
         'success'
       );
+      this.updateToggleVisibility(enabled);
     } catch (error) {
       this.showMessage('Failed to update status', 'error');
       this.elements.toggleEnabled.checked = !enabled;
+    }
+  }
+
+  async setOverrideSRC(enabled) {
+    try {
+      await this.sendMessage({
+        action: 'setOverrideSRC',
+        enabled
+      });
+
+      this.showMessage(
+        `OverrideSRC ${enabled ? 'enabled' : 'disabled'}`,
+        'success'
+      );
+      this.updateButtonVisibility(enabled);
+    } catch (error) {
+      this.showMessage('Failed to update OverrideSRC', 'error');
+      this.elements.toggleOverrideSRC.checked = !enabled;
     }
   }
 
@@ -98,9 +133,9 @@ class PopupManager {
       this.elements.forceInject.classList.add('loading');
 
       await chrome.tabs.reload(this.currentTab.id);
-      
+
       this.showMessage('Page reloaded for bananajection', 'success');
-      
+
     } catch (error) {
       this.showMessage('Failed to force bananajection', 'error');
     } finally {
@@ -116,8 +151,8 @@ class PopupManager {
       this.elements.forceUpdate.disabled = true;
       this.elements.forceUpdate.classList.add('loading');
 
-      const response = await this.sendMessage({ 
-        action: 'forceUpdate' 
+      const response = await this.sendMessage({
+        action: 'forceUpdate'
       });
 
       if (response.success) {
@@ -126,12 +161,28 @@ class PopupManager {
       } else {
         this.showMessage('Failed to update: ' + response.error, 'error');
       }
-      
+
     } catch (error) {
       this.showMessage('Failed to update script', 'error');
     } finally {
       this.elements.forceUpdate.disabled = false;
       this.elements.forceUpdate.classList.remove('loading');
+    }
+  }
+
+  updateButtonVisibility(overrideSRC) {
+    if (overrideSRC) {
+      this.elements.forceInject.classList.add('btn-hidden');
+    } else {
+      this.elements.forceInject.classList.remove('btn-hidden');
+    }
+  }
+
+  updateToggleVisibility(extensionEnabled) {
+    if (extensionEnabled) {
+      this.elements.rowOverrideSRC.style.display = 'flex';
+    } else {
+      this.elements.rowOverrideSRC.style.display = 'none';
     }
   }
 
