@@ -158,7 +158,6 @@
 
     .buttons {
       display: flex;
-      gap: 8px;
       margin-top: 16px;
     }
 
@@ -170,11 +169,33 @@
       font-weight: 600;
       font-size: 13px;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    #forceInject {
+      margin-right: 8px;
+    }
+
+    .btn.btn-hidden {
+      flex: 0.0001;
+      padding-left: 0;
+      padding-right: 0;
+      margin-right: 0;
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.9);
+      max-width: 0;
+    }
+
+    .no-transition,
+    .no-transition * {
+      transition: none !important;
     }
 
     .btn-primary {
@@ -266,7 +287,7 @@
       </div>
       <div class="title">
         <h1>Banana Burner</h1>
-        <div class="version">Version <span id="version">2979.0.4</span></div>
+        <div class="version">Version <span id="version">2979.0.5</span></div>
       </div>
     </div>
 
@@ -283,6 +304,14 @@
         <span class="status-label">Status</span>
         <label class="toggle-switch">
           <input type="checkbox" id="toggleEnabled">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="status-row" id="rowOverrideSRC">
+        <span class="status-label">OverrideSRC</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggleOverrideSRC">
           <span class="slider"></span>
         </label>
       </div>
