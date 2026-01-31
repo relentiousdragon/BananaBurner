@@ -11,6 +11,6 @@ If you're using the extension, update it from GitHub as that's not automatically
   Certain things will be disabled/hidden when this is turned on, for example: Lazy Load will be forced enabled, Start Hidden will be disabled, Eject buttons and hotkeys are disabled/hidden as bot-hosting's original script is overriden.
 - **SplashV2**: Added a new splash screen style to the script, can be enabled from profile -> settings.
 - **Changelog Modals**: You'll see what's new whenever the script automatically updates.
-- **UI Modifications**: Responsive stuff, changed ui stuff, etc.
+- **UI Modifications**: Responsive stuff, changed ui stuff, replaced banana emoji, etc.
 - **Other**: Server details modal and sidebar improvements.
 - **Bug Fixes and Improvements**
