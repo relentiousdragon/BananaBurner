@@ -204,7 +204,6 @@ class ScriptManager {
 
             await this.setInStorage(CACHE_KEY, script, true);
             await this.setInStorage(CACHE_TIMESTAMP_KEY, Date.now(), true);
-            await this.setInStorage('scriptVersion', this.extractVersion(script), true);
 
             return { success: true, script };
         } catch (error) {
@@ -246,8 +245,8 @@ class ScriptManager {
     }
 
     extractVersion(script) {
-        const versionMatch = script.match(/BananaBurner\s+(\d+)/);
-        return versionMatch ? versionMatch[1] : '2979.0.6';
+        const versionMatch = script.match(/BananaBurner\s+([\d.]+)/);
+        return versionMatch ? versionMatch[1] : chrome.runtime.getManifest().version;
     }
 
     async getScript() {
@@ -322,10 +321,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             Promise.all([
                 scriptManager.isEnabled(),
                 scriptManager.isOverrideSRCEnabled(),
-                scriptManager.getVersion(),
                 scriptManager.getLastUpdated(),
                 scriptManager.getFromStorage('extensionUpdateAvailable', true)
-            ]).then(([enabled, overrideSRC, version, lastUpdated, extensionUpdate]) => {
+            ]).then(([enabled, overrideSRC, lastUpdated, extensionUpdate]) => {
+                const version = chrome.runtime.getManifest().version;
                 sendResponse({ enabled, overrideSRC, version, lastUpdated, extensionUpdate });
             });
             return true;
