@@ -104,6 +104,12 @@ class ContentScript {
             response: response
           }, '*');
         });
+      } else if (event.data.action === 'checkExtensionUpdate') {
+        this.sendMessage({ action: 'checkExtensionUpdate' }).then(response => {
+          if (event.data.requestId) {
+            window.postMessage({ source: 'banana-burner-response', requestId: event.data.requestId, response }, '*');
+          }
+        });
       }
     });
 
