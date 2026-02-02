@@ -1,7 +1,7 @@
 # BananaBurner Changelog - 2026-02-02
 
 ## Script v2.3
-## Extension v2979.0.5
+## Extension v2979.0.6
 
 The extension update check is now automatic! Check the popup for update notifications.
 
