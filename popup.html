@@ -276,6 +276,32 @@
       color: var(--text-secondary);
       border: 1px solid var(--border-color);
     }
+
+    .update-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+      color: white;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+      transition: all 0.3s ease;
+    }
+
+    .update-banner:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.1);
+    }
+
+    .update-banner span {
+      flex: 1;
+    }
   </style>
 </head>
 
@@ -287,8 +313,15 @@
       </div>
       <div class="title">
         <h1>Banana Burner</h1>
-        <div class="version">Version <span id="version">2979.0.5</span></div>
+        <div class="version">Version <span id="version">2979.0.6</span></div>
       </div>
+    </div>
+
+    <div id="updateBanner" class="update-banner">
+      <span>New update available! (v<span id="newVersion"></span>)</span>
+      <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 4l-1.41 1.41L15.17 10H4v2h11.17l-4.58 4.59L12 18l8-8z" />
+      </svg>
     </div>
 
     <div id="siteIndicator" class="site-indicator off-site">
