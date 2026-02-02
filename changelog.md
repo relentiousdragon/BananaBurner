@@ -1,16 +1,29 @@
-# BananaBurner Changelog
-2026-01-31
+# BananaBurner Changelog - 2026-02-02
 
-## Script v2.2
+## Script v2.3
 ## Extension v2979.0.5
 
-If you're using the extension, update it from GitHub as that's not automatically updated.
+The extension update check is now automatic! Check the popup for update notifications.
 
-### Added;
-- **OverrideSRC (OSRC)**: Added a new feature that allows users to override the default source of bot-hosting's panel script to BananaBurner's - Extension.
-  Certain things will be disabled/hidden when this is turned on, for example: Lazy Load will be forced enabled, Start Hidden will be disabled, Eject buttons and hotkeys are disabled/hidden as bot-hosting's original script is overriden.
-- **SplashV2**: Added a new splash screen style to the script, can be enabled from profile -> settings.
-- **Changelog Modals**: You'll see what's new whenever the script automatically updates.
-- **UI Modifications**: Responsive stuff, changed ui stuff, replaced banana emoji, etc.
-- **Other**: Server details modal and sidebar improvements.
-- **Bug Fixes and Improvements**
+### Script Updates:
+- **Quick Actions System**: New Presets (Webhooks, Notifications, Settings), and Server pinning.
+- **Server Actions**: Real-time status indicators (Running/Starting/Pending/Offline) for pinned servers. Clicking a server action opens details modal.
+- **Webhooks UI**: Integration for Webhooks (Create/Delete) in the profile modal.
+- **Improved Editor**: Added Lightweight Editor (CodeJar) toggle in settings. Fixed Monaco scrolling responsiveness.
+- **Network Stats**: Network Inbound/Outbound stats in server details modal.
+- **OSRC Sync**: Extension popup toggle now correctly synchronizes OSRC state with local storage to prevent background script conflicts.
+- **Auto-Update System**: Background check for extension updates via GitHub.
+- **Settings**: added debug and QUIC (experimental) settings for development and testing.
+- **Server Console**: Persists for longer if OverrideSRC is enabled and the popup is closed.
+- **Other**
+
+### Script Bug Fixes:
+- Fixed Server Quick Action popup data mapping.
+- Fixed Webhooks delete button functionality and empty-state reporting.
+- Fixed Quick Action loading animation layout glitches.
+- Reverted server modal status badges to original orange for Pending status.
+- Added handling for missing/deleted servers in Quick Actions.
+- Fixed server console and PiP console bugs.
+- Other
+
+Other extension updates and bug fixes.
