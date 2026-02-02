@@ -19,7 +19,7 @@ class PopupManager {
       forceInject: document.getElementById('forceInject'),
       forceUpdate: document.getElementById('forceUpdate'),
       version: document.getElementById('version'),
-      scriptVersion: document.getElementById('scriptVersion'),
+      extVersion: document.getElementById('ext-version'),
       lastUpdated: document.getElementById('lastUpdated'),
       message: document.getElementById('message'),
       siteIndicator: document.getElementById('siteIndicator'),
@@ -37,7 +37,7 @@ class PopupManager {
 
       this.elements.toggleEnabled.checked = response.enabled;
       this.elements.toggleOverrideSRC.checked = response.overrideSRC;
-      this.elements.scriptVersion.textContent = response.version;
+      this.elements.extVersion.textContent = response.version;
       this.elements.version.textContent = response.version;
       this.elements.lastUpdated.textContent = response.lastUpdated;
 
