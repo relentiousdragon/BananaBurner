@@ -96,6 +96,14 @@ class ContentScript {
             window.postMessage({ source: 'banana-burner-response', requestId: event.data.requestId, response }, '*');
           }
         });
+      } else if (event.data.action === 'getStatus') {
+        this.sendMessage({ action: 'getStatus' }).then(response => {
+          window.postMessage({
+            source: 'banana-burner-response',
+            requestId: event.data.requestId,
+            response: response
+          }, '*');
+        });
       }
     });
 
