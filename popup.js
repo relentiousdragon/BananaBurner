@@ -25,6 +25,8 @@ class PopupManager {
       siteIndicator: document.getElementById('siteIndicator'),
       siteStatus: document.getElementById('siteStatus'),
       rowOverrideSRC: document.getElementById('rowOverrideSRC'),
+      updateBanner: document.getElementById('updateBanner'),
+      newVersion: document.getElementById('newVersion'),
       container: document.querySelector('.container')
     };
   }
@@ -42,6 +44,13 @@ class PopupManager {
       this.elements.container.classList.add('no-transition');
       this.updateButtonVisibility(response.overrideSRC);
       this.updateToggleVisibility(response.enabled);
+
+      if (response.extensionUpdate) {
+        this.elements.newVersion.textContent = response.extensionUpdate;
+        this.elements.updateBanner.style.display = 'flex';
+      } else {
+        this.elements.updateBanner.style.display = 'none';
+      }
 
       setTimeout(() => {
         this.elements.container.classList.remove('no-transition');
@@ -67,6 +76,10 @@ class PopupManager {
 
     this.elements.forceUpdate.addEventListener('click', () => {
       this.forceUpdate();
+    });
+
+    this.elements.updateBanner.addEventListener('click', () => {
+      window.open('https://github.com/relentiousdragon/BananaBurner', '_blank');
     });
   }
 
@@ -100,6 +113,9 @@ class PopupManager {
         `Extension ${enabled ? 'enabled' : 'disabled'}`,
         'success'
       );
+      if (!enabled) {
+        await this.setOverrideSRC(false);
+      }
       this.updateToggleVisibility(enabled);
     } catch (error) {
       this.showMessage('Failed to update status', 'error');
@@ -181,8 +197,10 @@ class PopupManager {
   updateToggleVisibility(extensionEnabled) {
     if (extensionEnabled) {
       this.elements.rowOverrideSRC.style.display = 'flex';
+      this.checkCurrentTab();
     } else {
       this.elements.rowOverrideSRC.style.display = 'none';
+      this.elements.forceInject.disabled = true;
     }
   }
 
