@@ -13,8 +13,40 @@ class ScriptManager {
     async initialize() {
         await this.migrateStorage();
         await this.checkForUpdates();
+        await this.checkExtensionUpdate();
         await this.setupHeaderRules();
         await this.setupOverrideRules();
+        await this.setupQuicRules();
+    }
+
+    async setupQuicRules() {
+        const disabled = await this.getFromStorage('quicDisabled', false);
+        if (disabled) {
+            const rule = {
+                id: 4,
+                priority: 4,
+                action: {
+                    type: 'modifyHeaders',
+                    responseHeaders: [{ header: 'Alt-Svc', operation: 'remove' }]
+                },
+                condition: {
+                    urlFilter: '*bot-hosting.net*',
+                    resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'script', 'stylesheet', 'image', 'websocket']
+                }
+            };
+            try {
+                await chrome.declarativeNetRequest.updateDynamicRules({
+                    removeRuleIds: [4],
+                    addRules: [rule]
+                });
+                console.log('Banana Burner: QUIC stripping rule applied.');
+            } catch (e) { console.error('QUIC Error:', e); }
+        } else {
+            try {
+                await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [4] });
+                console.log('Banana Burner: QUIC stripping rule removed.');
+            } catch (e) { }
+        }
     }
 
     async setupOverrideRules() {
@@ -181,9 +213,41 @@ class ScriptManager {
         }
     }
 
+    async checkExtensionUpdate() {
+        try {
+            const currentVersion = chrome.runtime.getManifest().version;
+            const response = await fetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/manifest.json?t=' + Date.now());
+            if (!response.ok) return;
+
+            const remoteManifest = await response.json();
+            const remoteVersion = remoteManifest.version;
+
+            if (this.isVersionNewer(currentVersion, remoteVersion)) {
+                await this.setInStorage('extensionUpdateAvailable', remoteVersion, true);
+                console.log(`Banana Burner: New extension version available: ${remoteVersion}`);
+            } else {
+                await this.setInStorage('extensionUpdateAvailable', false, true);
+            }
+        } catch (e) {
+            console.error('Banana Burner: Extension update check failed:', e);
+        }
+    }
+
+    isVersionNewer(current, remote) {
+        const c = current.split('.').map(Number);
+        const r = remote.split('.').map(Number);
+        for (let i = 0; i < Math.max(c.length, r.length); i++) {
+            const cv = c[i] || 0;
+            const rv = r[i] || 0;
+            if (rv > cv) return true;
+            if (cv > rv) return false;
+        }
+        return false;
+    }
+
     extractVersion(script) {
         const versionMatch = script.match(/BananaBurner\s+(\d+)/);
-        return versionMatch ? versionMatch[1] : '2979.0.5';
+        return versionMatch ? versionMatch[1] : '2979.0.6';
     }
 
     async getScript() {
@@ -210,6 +274,9 @@ class ScriptManager {
 
     async setEnabled(enabled) {
         await this.setInStorage('extensionEnabled', enabled, false);
+        if (!enabled) {
+            await this.setInStorage('overrideSRCEnabled', false, false);
+        }
         await this.setupOverrideRules();
     }
 
@@ -256,9 +323,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 scriptManager.isEnabled(),
                 scriptManager.isOverrideSRCEnabled(),
                 scriptManager.getVersion(),
-                scriptManager.getLastUpdated()
-            ]).then(([enabled, overrideSRC, version, lastUpdated]) => {
-                sendResponse({ enabled, overrideSRC, version, lastUpdated });
+                scriptManager.getLastUpdated(),
+                scriptManager.getFromStorage('extensionUpdateAvailable', true)
+            ]).then(([enabled, overrideSRC, version, lastUpdated, extensionUpdate]) => {
+                sendResponse({ enabled, overrideSRC, version, lastUpdated, extensionUpdate });
             });
             return true;
 
@@ -277,6 +345,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'forceUpdate':
             scriptManager.updateScript(true).then(result => {
                 sendResponse(result);
+            });
+            return true;
+
+        case 'checkExtensionUpdate':
+            scriptManager.checkExtensionUpdate().then(() => {
+                sendResponse({ success: true });
+            });
+            return true;
+
+        case 'setQuicDisabled':
+            scriptManager.setInStorage('quicDisabled', request.disabled, false).then(() => {
+                scriptManager.setupQuicRules().then(() => {
+                    sendResponse({ success: true });
+                });
             });
             return true;
 
