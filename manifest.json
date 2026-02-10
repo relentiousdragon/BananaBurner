@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Banana Burner 2979",
-  "version": "2979.0.7",
+  "version": "2979.0.8",
+  "script_version": "2.5",
   "description": "MORE BANANAAAAA!11!",
   "permissions": [
     "activeTab",
@@ -11,7 +12,8 @@
     "notifications",
     "declarativeNetRequest",
     "declarativeNetRequestFeedback",
-    "cookies"
+    "cookies",
+    "alarms"
   ],
   "host_permissions": [
     "https://bot-hosting.net/*",
