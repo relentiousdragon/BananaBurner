@@ -17,10 +17,10 @@ class PopupManager {
       toggleEnabled: document.getElementById('toggleEnabled'),
       toggleOverrideSRC: document.getElementById('toggleOverrideSRC'),
       forceInject: document.getElementById('forceInject'),
-      forceUpdate: document.getElementById('forceUpdate'),
+      updateScriptBtn: document.getElementById('updateScriptBtn'),
       version: document.getElementById('version'),
       extVersion: document.getElementById('ext-version'),
-      lastUpdated: document.getElementById('lastUpdated'),
+      scriptVersion: document.getElementById('scriptVersion'),
       message: document.getElementById('message'),
       siteIndicator: document.getElementById('siteIndicator'),
       siteStatus: document.getElementById('siteStatus'),
@@ -39,17 +39,30 @@ class PopupManager {
       this.elements.toggleOverrideSRC.checked = response.overrideSRC;
       this.elements.extVersion.textContent = response.version;
       this.elements.version.textContent = response.version;
-      this.elements.lastUpdated.textContent = response.lastUpdated;
+      this.elements.scriptVersion.textContent = response.scriptVersion || '?.?';
 
       this.elements.container.classList.add('no-transition');
       this.updateButtonVisibility(response.overrideSRC);
       this.updateToggleVisibility(response.enabled);
 
-      if (response.extensionUpdate) {
-        this.elements.newVersion.textContent = response.extensionUpdate;
+      if (response.extensionUpdate || response.scriptUpdateAvailable) {
+        if (response.extensionUpdate) {
+          this.elements.newVersion.textContent = 'v' + response.extensionUpdate;
+        } else {
+          this.elements.newVersion.textContent = 'v' + response.latestScriptVersion;
+        }
         this.elements.updateBanner.style.display = 'flex';
       } else {
         this.elements.updateBanner.style.display = 'none';
+      }
+
+      if (response.scriptUpdateAvailable) {
+        this.elements.updateScriptBtn.classList.remove('btn-hidden');
+        this.elements.scriptVersion.textContent += ' (Update Available)';
+        this.elements.scriptVersion.style.color = 'var(--accent-warning)';
+      } else {
+        this.elements.updateScriptBtn.classList.add('btn-hidden');
+        this.elements.scriptVersion.style.color = '';
       }
 
       setTimeout(() => {
@@ -74,8 +87,8 @@ class PopupManager {
       this.forceInject();
     });
 
-    this.elements.forceUpdate.addEventListener('click', () => {
-      this.forceUpdate();
+    this.elements.updateScriptBtn.addEventListener('click', () => {
+      window.open('https://github.com/relentiousdragon/BananaBurner/blob/main/injected.js', '_blank');
     });
 
     this.elements.updateBanner.addEventListener('click', () => {
@@ -162,35 +175,24 @@ class PopupManager {
     }
   }
 
-  async forceUpdate() {
-    try {
-      this.elements.forceUpdate.disabled = true;
-      this.elements.forceUpdate.classList.add('loading');
-
-      const response = await this.sendMessage({
-        action: 'forceUpdate'
-      });
-
-      if (response.success) {
-        await this.loadStatus();
-        this.showMessage('Script updated successfully!', 'success');
-      } else {
-        this.showMessage('Failed to update: ' + response.error, 'error');
-      }
-
-    } catch (error) {
-      this.showMessage('Failed to update script', 'error');
-    } finally {
-      this.elements.forceUpdate.disabled = false;
-      this.elements.forceUpdate.classList.remove('loading');
-    }
-  }
-
   updateButtonVisibility(overrideSRC) {
+    const forceInject = this.elements.forceInject;
+    const updateScriptBtn = this.elements.updateScriptBtn;
+    const buttonsContainer = document.querySelector('.buttons');
+
     if (overrideSRC) {
-      this.elements.forceInject.classList.add('btn-hidden');
+      forceInject.classList.add('btn-hidden');
     } else {
-      this.elements.forceInject.classList.remove('btn-hidden');
+      forceInject.classList.remove('btn-hidden');
+    }
+
+    const forceInjectHidden = forceInject.classList.contains('btn-hidden');
+    const updateScriptBtnHidden = updateScriptBtn.classList.contains('btn-hidden');
+
+    if (forceInjectHidden && updateScriptBtnHidden) {
+      buttonsContainer.style.display = 'none';
+    } else {
+      buttonsContainer.style.display = 'flex';
     }
   }
 
