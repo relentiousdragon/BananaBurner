@@ -1,8 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Banana Burner 2979",
+  "name": "BananaBurner 2979",
   "version": "2979.0.8",
-  "script_version": "2.5",
   "description": "MORE BANANAAAAA!11!",
   "permissions": [
     "activeTab",
@@ -20,7 +19,8 @@
     "https://*.bot-hosting.net/*",
     "http://*.bot-hosting.net/*",
     "wss://*.bot-hosting.net/*",
-    "ws://*.bot-hosting.net/*"
+    "ws://*.bot-hosting.net/*",
+    "https://raw.githubusercontent.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -38,7 +38,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Banana Burner 2979"
+    "default_title": "BananaBurner 2979"
   },
   "icons": {
     "16": "icons/icon16.png",
@@ -49,7 +49,9 @@
     {
       "resources": [
         "injected.js",
-        "osrc_hook.js"
+        "osrc_hook.js",
+        "index.html",
+        "icons/*"
       ],
       "matches": [
         "https://bot-hosting.net/*",
