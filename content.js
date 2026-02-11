@@ -8,19 +8,31 @@ class ContentScript {
 
   async init() {
     console.log('Banana Burner: Content script initialized, checking status...');
-    const response = await this.sendMessage({ action: 'getStatus' }).catch(err => {
-      console.error('Banana Burner: Failed to get status from background:', err);
-      return { enabled: true, overrideSRC: false };
-    });
 
-    if (!response.enabled) {
+    const response = await this.sendMessage({ action: 'getStatus' });
+    if (!response || !response.enabled) {
       console.log('Banana Burner: Extension is disabled');
       return;
     }
 
     if (response.overrideSRC) {
+      console.log('Banana Burner: OverrideSRC enabled, customizing UI...');
+      localStorage.setItem('OSRC', 'true');
+
       this.injectLocalStorageHook();
-      console.log('Banana Burner: OverrideSRC enabled, redirection rule should handle injection.');
+
+      document.title = 'BananaBurner 2979';
+
+      const iconUrl = 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon48.png';
+      let link = document.querySelector("link[rel~='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = iconUrl;
+
+      this.scriptInjected = true;
       return;
     }
 
@@ -47,6 +59,24 @@ class ContentScript {
       (document.head || document.documentElement).appendChild(script);
     } catch (error) {
       console.error('Banana Burner: Failed to inject OSRC hook:', error);
+    }
+  }
+
+  injectScript() {
+    if (this.scriptInjected) return;
+
+    try {
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL('injected.js');
+      script.onload = function () {
+        this.remove();
+      };
+      (document.head || document.documentElement).appendChild(script);
+      this.scriptInjected = true;
+      console.log('Banana Burner: Bananas injected successfully! 🍌');
+      this.sendMessage({ action: 'injectionComplete' });
+    } catch (error) {
+      console.error('Banana Burner: Failed to inject script:', error);
     }
   }
 
@@ -109,6 +139,11 @@ class ContentScript {
           if (event.data.requestId) {
             window.postMessage({ source: 'banana-burner-response', requestId: event.data.requestId, response }, '*');
           }
+        });
+      } else if (event.data.action === 'scriptUpdateDetected') {
+        this.sendMessage({
+          action: 'scriptUpdateDetected',
+          version: event.data.version
         });
       }
     });
@@ -228,24 +263,6 @@ class ContentScript {
         resolve();
       }, 30000);
     });
-  }
-
-  async injectScript() {
-    if (this.scriptInjected) return;
-
-    try {
-      const script = document.createElement('script');
-      script.src = chrome.runtime.getURL('injected.js');
-      script.onload = function () {
-        this.remove();
-      };
-      (document.head || document.documentElement).appendChild(script);
-      this.scriptInjected = true;
-      console.log('Banana Burner: Bananas injected successfully! 🍌');
-      this.sendMessage({ action: 'injectionComplete' });
-    } catch (error) {
-      console.error('Banana Burner: Failed to inject script:', error);
-    }
   }
 
   sendMessage(message) {
