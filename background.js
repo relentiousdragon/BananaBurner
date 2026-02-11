@@ -1,8 +1,4 @@
-const SCRIPT_URL = 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/injected.js';
-const CACHE_KEY = 'bananaburner_script_cache';
-const CACHE_TIMESTAMP_KEY = 'bananaburner_script_timestamp';
-const CACHE_DURATION = 60 * 60 * 1000;
-
+const UPDATE_ALARM_NAME = 'scriptUpdateCheck';
 const activeWebSockets = new Map();
 
 class ScriptManager {
@@ -12,11 +8,22 @@ class ScriptManager {
 
     async initialize() {
         await this.migrateStorage();
-        await this.checkForUpdates();
-        await this.checkExtensionUpdate();
+        await this.checkScriptUpdate();
         await this.setupHeaderRules();
         await this.setupOverrideRules();
         await this.setupQuicRules();
+        await this.setupAlarm();
+    }
+
+    async setupAlarm() {
+        try {
+            await chrome.alarms.create(UPDATE_ALARM_NAME, {
+                periodInMinutes: 60
+            });
+            console.log('Banana Burner: Update alarm scheduled (every 60 min).');
+        } catch (e) {
+            console.error('Banana Burner: Failed to create alarm:', e);
+        }
     }
 
     async setupQuicRules() {
@@ -67,23 +74,62 @@ class ScriptManager {
                 }
             };
 
+            const blockingRules = [
+                {
+                    id: 10,
+                    priority: 1,
+                    action: { type: 'block' },
+                    condition: { urlFilter: '*nitropay.com*', resourceTypes: ['script', 'sub_frame'] }
+                },
+                {
+                    id: 11,
+                    priority: 1,
+                    action: { type: 'block' },
+                    condition: { urlFilter: '*googletagmanager.com*', resourceTypes: ['script'] }
+                },
+                {
+                    id: 12,
+                    priority: 1,
+                    action: { type: 'block' },
+                    condition: { urlFilter: '*cloudflareinsights.com*', resourceTypes: ['script'] }
+                },
+                {
+                    id: 13,
+                    priority: 1,
+                    action: { type: 'block' },
+                    condition: { urlFilter: '*sweetalert*', resourceTypes: ['script', 'stylesheet'] }
+                },
+                {
+                    id: 14,
+                    priority: 1,
+                    action: { type: 'block' },
+                    condition: { urlFilter: '*simplemde*', resourceTypes: ['script', 'stylesheet'] }
+                },
+                {
+                    id: 15,
+                    priority: 1,
+                    action: { type: 'block' },
+                    condition: { urlFilter: '*bttn.css*', resourceTypes: ['stylesheet'] }
+                }
+            ];
+
             try {
                 await chrome.declarativeNetRequest.updateDynamicRules({
-                    removeRuleIds: [3],
-                    addRules: [rule]
+                    removeRuleIds: [3, 5, 10, 11, 12, 13, 14, 15],
+                    addRules: [rule, ...blockingRules]
                 });
-                console.log('Banana Burner: Override redirection rule applied.');
+                console.log('Banana Burner: Override redirection (JS) and blocking rules applied.');
             } catch (error) {
-                console.error('Banana Burner: Failed to apply override rule:', error);
+                console.error('Banana Burner: Failed to apply override/blocking rules:', error);
             }
         } else {
             try {
                 await chrome.declarativeNetRequest.updateDynamicRules({
-                    removeRuleIds: [3]
+                    removeRuleIds: [3, 5, 10, 11, 12, 13, 14, 15]
                 });
-                console.log('Banana Burner: Override redirection rule removed.');
+                console.log('Banana Burner: Override redirection and blocking rules removed.');
             } catch (error) {
-                console.error('Banana Burner: Failed to remove override rule:', error);
+                console.error('Banana Burner: Failed to remove override rules:', error);
             }
         }
     }
@@ -134,21 +180,20 @@ class ScriptManager {
 
     async migrateStorage() {
         try {
-            const syncData = await chrome.storage.sync.get([
-                'extensionEnabled',
-                CACHE_KEY,
-                CACHE_TIMESTAMP_KEY,
-                'scriptVersion'
-            ]);
+            const syncData = await chrome.storage.sync.get(['extensionEnabled']);
 
-            if (syncData[CACHE_KEY]) {
-                await chrome.storage.local.set({
-                    [CACHE_KEY]: syncData[CACHE_KEY],
-                    [CACHE_TIMESTAMP_KEY]: syncData[CACHE_TIMESTAMP_KEY],
-                    scriptVersion: syncData.scriptVersion
-                });
+            const legacyKeys = ['bananaburner_script_cache', 'bananaburner_script_timestamp'];
+            await chrome.storage.local.remove(legacyKeys);
+            await chrome.storage.sync.remove(legacyKeys);
 
-                await chrome.storage.sync.remove([CACHE_KEY, CACHE_TIMESTAMP_KEY, 'scriptVersion']);
+            const storedVersion = await this.getFromStorage('scriptVersion', true);
+            if (storedVersion && storedVersion.includes('2979')) {
+                await chrome.storage.local.remove('scriptVersion');
+            }
+
+            if (!storedVersion) {
+                const manifestScriptVersion = chrome.runtime.getManifest().script_version;
+                await this.setInStorage('scriptVersion', manifestScriptVersion, true);
             }
 
             if (syncData.extensionEnabled === undefined) {
@@ -175,40 +220,37 @@ class ScriptManager {
         await storage.set({ [key]: value });
     }
 
-    async checkForUpdates() {
+    async checkScriptUpdate() {
         try {
-            const cachedTimestamp = await this.getFromStorage(CACHE_TIMESTAMP_KEY, true);
-            const now = Date.now();
+            console.log('Banana Burner: Checking for script updates (sv.dat)...');
 
-            if (!cachedTimestamp || (now - cachedTimestamp) > CACHE_DURATION) {
-                await this.updateScript();
-            }
+            const response = await fetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/sv.dat?t=' + Date.now());
+            if (!response.ok) throw new Error(`sv.dat fetch failed: HTTP ${response.status}`);
+
+            const remoteScriptVersion = (await response.text()).trim();
+            if (!remoteScriptVersion) throw new Error('Empty sv.dat received');
+
+            const currentScriptVersion = await this.getFromStorage('scriptVersion', true);
+
+            await this.setInStorage('latestScriptVersion', remoteScriptVersion, true);
+            await this.setInStorage('lastScriptCheck', Date.now(), true);
+
+            const updateAvailable = this.isVersionNewer(currentScriptVersion, remoteScriptVersion);
+            await this.setInStorage('scriptUpdateAvailable', updateAvailable, true);
+
+            console.log(`Banana Burner: Script check: current v${currentScriptVersion}, remote v${remoteScriptVersion}, update? ${updateAvailable}`);
+
+            this.checkExtensionUpdate();
+
+            return {
+                scriptUpdateAvailable: updateAvailable,
+                currentVersion: currentScriptVersion,
+                latestVersion: remoteScriptVersion
+            };
+
         } catch (error) {
-            console.error('Banana Burner: Update check failed:', error);
-        }
-    }
-
-    async updateScript(force = false) {
-        try {
-            console.log('Banana Burner: Updating script from GitHub...');
-            const response = await fetch(SCRIPT_URL + (force ? `?t=${Date.now()}` : ''));
-            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
-            const script = await response.text();
-
-            if (!script || script.length === 0) {
-                throw new Error('Empty script received');
-            }
-
-            console.log(`Banana Burner: Script fetched successfully (${script.length} bytes)`);
-
-            await this.setInStorage(CACHE_KEY, script, true);
-            await this.setInStorage(CACHE_TIMESTAMP_KEY, Date.now(), true);
-
-            return { success: true, script };
-        } catch (error) {
-            console.error('Banana Burner: Failed to update script:', error);
-            return { success: false, error: error.message };
+            console.error('Banana Burner: Failed to check script update:', error);
+            return { error: error.message };
         }
     }
 
@@ -233,6 +275,7 @@ class ScriptManager {
     }
 
     isVersionNewer(current, remote) {
+        if (!current || !remote) return false;
         const c = current.split('.').map(Number);
         const r = remote.split('.').map(Number);
         for (let i = 0; i < Math.max(c.length, r.length); i++) {
@@ -242,28 +285,6 @@ class ScriptManager {
             if (cv > rv) return false;
         }
         return false;
-    }
-
-    extractVersion(script) {
-        const versionMatch = script.match(/BananaBurner\s+([\d.]+)/);
-        return versionMatch ? versionMatch[1] : chrome.runtime.getManifest().version;
-    }
-
-    async getScript() {
-        try {
-            await this.checkForUpdates();
-            const cachedScript = await this.getFromStorage(CACHE_KEY, true);
-
-            if (!cachedScript) {
-                const result = await this.updateScript();
-                return result.script || '';
-            }
-
-            return cachedScript;
-        } catch (error) {
-            console.error('Banana Burner: Failed to get script:', error);
-            return '';
-        }
     }
 
     async isEnabled() {
@@ -291,16 +312,23 @@ class ScriptManager {
 
     async getVersion() {
         const version = await this.getFromStorage('scriptVersion', true);
-        return version || '2979.?.?';
+        return version || chrome.runtime.getManifest().script_version || '?.?';
     }
 
-    async getLastUpdated() {
-        const timestamp = await this.getFromStorage(CACHE_TIMESTAMP_KEY, true);
+    async getLastChecked() {
+        const timestamp = await this.getFromStorage('lastScriptCheck', true);
         return timestamp ? new Date(timestamp).toLocaleDateString() : 'Never';
     }
 }
 
 const scriptManager = new ScriptManager();
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === UPDATE_ALARM_NAME) {
+        console.log('Banana Burner: Alarm fired, checking for script updates...');
+        await scriptManager.checkScriptUpdate();
+    }
+});
 
 chrome.webNavigation.onCompleted.addListener(async (details) => {
     if (details.url.includes('/panel/')) {
@@ -313,19 +341,27 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.action) {
-        case 'getScript':
-            scriptManager.getScript().then(script => sendResponse({ script }));
-            return true;
-
         case 'getStatus':
             Promise.all([
                 scriptManager.isEnabled(),
                 scriptManager.isOverrideSRCEnabled(),
-                scriptManager.getLastUpdated(),
-                scriptManager.getFromStorage('extensionUpdateAvailable', true)
-            ]).then(([enabled, overrideSRC, lastUpdated, extensionUpdate]) => {
+                scriptManager.getLastChecked(),
+                scriptManager.getVersion(),
+                scriptManager.getFromStorage('extensionUpdateAvailable', true),
+                scriptManager.getFromStorage('scriptUpdateAvailable', true),
+                scriptManager.getFromStorage('latestScriptVersion', true)
+            ]).then(([enabled, overrideSRC, lastChecked, scriptVersion, extensionUpdate, scriptUpdateAvailable, latestScriptVersion]) => {
                 const version = chrome.runtime.getManifest().version;
-                sendResponse({ enabled, overrideSRC, version, lastUpdated, extensionUpdate });
+                sendResponse({
+                    enabled,
+                    overrideSRC,
+                    version,
+                    lastChecked,
+                    scriptVersion,
+                    extensionUpdate,
+                    scriptUpdateAvailable,
+                    latestScriptVersion
+                });
             });
             return true;
 
@@ -341,8 +377,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             });
             return true;
 
-        case 'forceUpdate':
-            scriptManager.updateScript(true).then(result => {
+        case 'checkScriptUpdate':
+            scriptManager.checkScriptUpdate().then(result => {
                 sendResponse(result);
             });
             return true;
@@ -402,6 +438,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ success: true, logged: true });
             return true;
         }
+
+        case 'scriptUpdateDetected':
+            chrome.action.setBadgeText({ text: '!' });
+            chrome.action.setBadgeBackgroundColor({ color: '#FFAB00' });
+
+            (async () => {
+                await scriptManager.setInStorage('scriptUpdateAvailable', true, true);
+                if (request.version) {
+                    await scriptManager.setInStorage('latestScriptVersion', request.version, true);
+                }
+            })();
+
+            sendResponse({ success: true });
+            return true;
 
         case 'proxyFetch': {
             const { url, options } = request;
