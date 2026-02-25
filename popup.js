@@ -20,7 +20,6 @@ class PopupManager {
       updateScriptBtn: document.getElementById('updateScriptBtn'),
       version: document.getElementById('version'),
       extVersion: document.getElementById('ext-version'),
-      scriptVersion: document.getElementById('scriptVersion'),
       message: document.getElementById('message'),
       siteIndicator: document.getElementById('siteIndicator'),
       siteStatus: document.getElementById('siteStatus'),
@@ -39,7 +38,6 @@ class PopupManager {
       this.elements.toggleOverrideSRC.checked = response.overrideSRC;
       this.elements.extVersion.textContent = response.version;
       this.elements.version.textContent = response.version;
-      this.elements.scriptVersion.textContent = response.scriptVersion || '?.?';
 
       this.elements.container.classList.add('no-transition');
       this.updateButtonVisibility(response.overrideSRC);
@@ -58,11 +56,8 @@ class PopupManager {
 
       if (response.scriptUpdateAvailable) {
         this.elements.updateScriptBtn.classList.remove('btn-hidden');
-        this.elements.scriptVersion.textContent += ' (Update Available)';
-        this.elements.scriptVersion.style.color = 'var(--accent-warning)';
       } else {
         this.elements.updateScriptBtn.classList.add('btn-hidden');
-        this.elements.scriptVersion.style.color = '';
       }
 
       setTimeout(() => {
@@ -126,9 +121,6 @@ class PopupManager {
         `Extension ${enabled ? 'enabled' : 'disabled'}`,
         'success'
       );
-      if (!enabled) {
-        await this.setOverrideSRC(false);
-      }
       this.updateToggleVisibility(enabled);
     } catch (error) {
       this.showMessage('Failed to update status', 'error');
