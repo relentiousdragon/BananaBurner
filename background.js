@@ -29,7 +29,7 @@ class ScriptManager {
     async setupQuicRules() {
         const disabled = await this.getFromStorage('quicDisabled', false);
         if (disabled) {
-            const rule = {
+            const ruleNet = {
                 id: 4,
                 priority: 4,
                 action: {
@@ -41,16 +41,28 @@ class ScriptManager {
                     resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'script', 'stylesheet', 'image', 'websocket']
                 }
             };
+            const ruleCloud = {
+                id: 16,
+                priority: 4,
+                action: {
+                    type: 'modifyHeaders',
+                    responseHeaders: [{ header: 'Alt-Svc', operation: 'remove' }]
+                },
+                condition: {
+                    urlFilter: '*bot-hosting.cloud*',
+                    resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'script', 'stylesheet', 'image', 'websocket']
+                }
+            };
             try {
                 await chrome.declarativeNetRequest.updateDynamicRules({
-                    removeRuleIds: [4],
-                    addRules: [rule]
+                    removeRuleIds: [4, 16],
+                    addRules: [ruleNet, ruleCloud]
                 });
                 console.log('Banana Burner: QUIC stripping rule applied.');
             } catch (e) { console.error('QUIC Error:', e); }
         } else {
             try {
-                await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [4] });
+                await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [4, 16] });
                 console.log('Banana Burner: QUIC stripping rule removed.');
             } catch (e) { }
         }
@@ -59,6 +71,7 @@ class ScriptManager {
     async setupOverrideRules() {
         const enabled = await this.isEnabled();
         const override = await this.isOverrideSRCEnabled();
+        const showAds = await this.getFromStorage('showAds', true) !== false;
 
         if (enabled && override) {
             const rule = {
@@ -75,12 +88,12 @@ class ScriptManager {
             };
 
             const blockingRules = [
-                {
+                !showAds ? {
                     id: 10,
                     priority: 1,
                     action: { type: 'block' },
                     condition: { urlFilter: '*nitropay.com*', resourceTypes: ['script', 'sub_frame'] }
-                },
+                } : null,
                 {
                     id: 11,
                     priority: 1,
@@ -111,7 +124,7 @@ class ScriptManager {
                     action: { type: 'block' },
                     condition: { urlFilter: '*bttn.css*', resourceTypes: ['stylesheet'] }
                 }
-            ];
+            ].filter(Boolean);
 
             try {
                 await chrome.declarativeNetRequest.updateDynamicRules({
@@ -152,6 +165,21 @@ class ScriptManager {
                 }
             },
             {
+                id: 17,
+                priority: 1,
+                action: {
+                    type: 'modifyHeaders',
+                    requestHeaders: [
+                        { header: 'Origin', operation: 'set', value: 'https://control.bot-hosting.net' },
+                        { header: 'Referer', operation: 'set', value: 'https://control.bot-hosting.net/' }
+                    ]
+                },
+                condition: {
+                    urlFilter: '*bot-hosting.cloud*',
+                    resourceTypes: ['xmlhttprequest', 'websocket']
+                }
+            },
+            {
                 id: 2,
                 priority: 2,
                 action: {
@@ -164,12 +192,46 @@ class ScriptManager {
                     urlFilter: 'control.bot-hosting.net/api/*',
                     resourceTypes: ['xmlhttprequest']
                 }
+            },
+            {
+                id: 6,
+                priority: 6,
+                action: {
+                    type: 'modifyHeaders',
+                    responseHeaders: [
+                        { header: 'Access-Control-Allow-Origin', operation: 'set', value: 'https://bot-hosting.net' },
+                        { header: 'Access-Control-Allow-Methods', operation: 'set', value: 'GET, POST, PUT, DELETE, OPTIONS' },
+                        { header: 'Access-Control-Allow-Headers', operation: 'set', value: '*' },
+                        { header: 'Access-Control-Allow-Credentials', operation: 'set', value: 'true' }
+                    ]
+                },
+                condition: {
+                    urlFilter: '*bot-hosting.net*',
+                    resourceTypes: ['xmlhttprequest']
+                }
+            },
+            {
+                id: 18,
+                priority: 6,
+                action: {
+                    type: 'modifyHeaders',
+                    responseHeaders: [
+                        { header: 'Access-Control-Allow-Origin', operation: 'set', value: 'https://bot-hosting.net' },
+                        { header: 'Access-Control-Allow-Methods', operation: 'set', value: 'GET, POST, PUT, DELETE, OPTIONS' },
+                        { header: 'Access-Control-Allow-Headers', operation: 'set', value: '*' },
+                        { header: 'Access-Control-Allow-Credentials', operation: 'set', value: 'true' }
+                    ]
+                },
+                condition: {
+                    urlFilter: '*bot-hosting.cloud*',
+                    resourceTypes: ['xmlhttprequest']
+                }
             }
         ];
 
         try {
             await chrome.declarativeNetRequest.updateDynamicRules({
-                removeRuleIds: rules.map(r => r.id),
+                removeRuleIds: [1, 2, 6, 17, 18],
                 addRules: rules
             });
             console.log('Banana Burner: Header modification rules applied.');
@@ -294,9 +356,6 @@ class ScriptManager {
 
     async setEnabled(enabled) {
         await this.setInStorage('extensionEnabled', enabled, false);
-        if (!enabled) {
-            await this.setInStorage('overrideSRCEnabled', false, false);
-        }
         await this.setupOverrideRules();
     }
 
@@ -368,6 +427,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'setOverrideSRC':
             scriptManager.setOverrideSRC(request.enabled).then(() => {
                 sendResponse({ success: true });
+            });
+            return true;
+
+        case 'setShowAds':
+            scriptManager.setInStorage('showAds', request.enabled, false).then(() => {
+                scriptManager.setupOverrideRules().then(() => {
+                    sendResponse({ success: true });
+                });
             });
             return true;
 
@@ -460,7 +527,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             (async () => {
                 try {
                     const targetUrl = new URL(url);
-                    if (targetUrl.hostname.includes('bot-hosting.net')) {
+                    if (targetUrl.hostname.includes('bot-hosting.net') || targetUrl.hostname.includes('bot-hosting.cloud')) {
                         const cookies = await chrome.cookies.getAll({ domain: targetUrl.hostname });
                         const xsrfCookie = cookies.find(c => c.name === 'XSRF-TOKEN');
                         if (xsrfCookie) {
@@ -478,6 +545,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                     if (contentType && contentType.includes('application/json')) {
                         data = await response.json();
+                    } else if (contentType && contentType.includes('image/')) {
+                        const buffer = await response.arrayBuffer();
+                        const bytes = new Uint8Array(buffer);
+                        let binary = '';
+                        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+                        data = `data:${contentType};base64,${btoa(binary)}`;
                     } else {
                         data = await response.text();
                     }
