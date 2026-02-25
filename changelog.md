@@ -12,6 +12,7 @@ You can add and manage sub users on your server
 Console now automatically connects
 Banana Agent for Node.js Servers
 - Crash Detection, Discord logs, saved file logs, stuff.
+
 Added support for NitroAds below Coin Collector to support bot-hosting.net
 added context menu stuff, you can copy and do other stuff
 You can now change a server's plan, billing or language. 
