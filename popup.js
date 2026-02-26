@@ -17,7 +17,6 @@ class PopupManager {
       toggleEnabled: document.getElementById('toggleEnabled'),
       toggleOverrideSRC: document.getElementById('toggleOverrideSRC'),
       forceInject: document.getElementById('forceInject'),
-      updateScriptBtn: document.getElementById('updateScriptBtn'),
       version: document.getElementById('version'),
       extVersion: document.getElementById('ext-version'),
       message: document.getElementById('message'),
@@ -43,21 +42,13 @@ class PopupManager {
       this.updateButtonVisibility(response.overrideSRC);
       this.updateToggleVisibility(response.enabled);
 
-      if (response.extensionUpdate || response.scriptUpdateAvailable) {
+      if (response.extensionUpdate) {
         if (response.extensionUpdate) {
           this.elements.newVersion.textContent = 'v' + response.extensionUpdate;
-        } else {
-          this.elements.newVersion.textContent = 'v' + response.latestScriptVersion;
         }
         this.elements.updateBanner.style.display = 'flex';
       } else {
         this.elements.updateBanner.style.display = 'none';
-      }
-
-      if (response.scriptUpdateAvailable) {
-        this.elements.updateScriptBtn.classList.remove('btn-hidden');
-      } else {
-        this.elements.updateScriptBtn.classList.add('btn-hidden');
       }
 
       setTimeout(() => {
@@ -80,10 +71,6 @@ class PopupManager {
 
     this.elements.forceInject.addEventListener('click', () => {
       this.forceInject();
-    });
-
-    this.elements.updateScriptBtn.addEventListener('click', () => {
-      window.open('https://github.com/relentiousdragon/BananaBurner/blob/main/injected.js', '_blank');
     });
 
     this.elements.updateBanner.addEventListener('click', () => {
@@ -169,7 +156,6 @@ class PopupManager {
 
   updateButtonVisibility(overrideSRC) {
     const forceInject = this.elements.forceInject;
-    const updateScriptBtn = this.elements.updateScriptBtn;
     const buttonsContainer = document.querySelector('.buttons');
 
     if (overrideSRC) {
@@ -179,9 +165,8 @@ class PopupManager {
     }
 
     const forceInjectHidden = forceInject.classList.contains('btn-hidden');
-    const updateScriptBtnHidden = updateScriptBtn.classList.contains('btn-hidden');
 
-    if (forceInjectHidden && updateScriptBtnHidden) {
+    if (forceInjectHidden) {
       buttonsContainer.style.display = 'none';
     } else {
       buttonsContainer.style.display = 'flex';
