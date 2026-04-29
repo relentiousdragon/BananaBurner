@@ -33,9 +33,10 @@ class ScriptManager {
         const enabled = await this.isEnabled();
         const override = await this.isOverrideSRCEnabled();
         const showAds = await this.getFromStorage('showAds', true) !== false;
-
+        const joinSupportServer = await this.getFromStorage('joinSupportServer', false) !== false;
+        
         if (enabled && override) {
-            const noDiscordServerJoin = {
+            const noDiscordServerJoin = !joinSupportServer ? {
                 id: 20,
                 priority: 10,
                 action: {
@@ -46,7 +47,7 @@ class ScriptManager {
                     urlFilter: 'bot-hosting.net/login/discord',
                     resourceTypes: ['main_frame']
                 }
-            };
+            } : null;
 
             const rule = {
                 id: 3,
@@ -103,7 +104,7 @@ class ScriptManager {
             try {
                 await chrome.declarativeNetRequest.updateDynamicRules({
                     removeRuleIds: [3, 5, 10, 11, 12, 13, 14, 15, 20],
-                    addRules: [rule, noDiscordServerJoin, ...blockingRules]
+                    addRules: [rule, noDiscordServerJoin, ...blockingRules].filter(Boolean)
                 });
                 console.log('[BananaBurner] Override redirection (JS) and blocking rules applied.');
             } catch (error) {
@@ -135,7 +136,9 @@ class ScriptManager {
                 },
                 condition: {
                     urlFilter: '*bot-hosting.net*',
-                    resourceTypes: ['xmlhttprequest', 'websocket']
+                    resourceTypes: ['xmlhttprequest', 'websocket'],
+                    initiatorDomains: ['bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net']
                 }
             },
             {
@@ -150,7 +153,9 @@ class ScriptManager {
                 },
                 condition: {
                     urlFilter: '*bot-hosting.cloud*',
-                    resourceTypes: ['xmlhttprequest', 'websocket']
+                    resourceTypes: ['xmlhttprequest', 'websocket'],
+                    initiatorDomains: ['bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net']
                 }
             },
             {
@@ -164,7 +169,9 @@ class ScriptManager {
                 },
                 condition: {
                     urlFilter: 'control.bot-hosting.net/api/*',
-                    resourceTypes: ['xmlhttprequest']
+                    resourceTypes: ['xmlhttprequest'],
+                    initiatorDomains: ['bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net']
                 }
             },
             {
@@ -181,7 +188,9 @@ class ScriptManager {
                 },
                 condition: {
                     urlFilter: '*bot-hosting.net*',
-                    resourceTypes: ['xmlhttprequest']
+                    resourceTypes: ['xmlhttprequest'],
+                    initiatorDomains: ['bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net']
                 }
             },
             {
@@ -198,7 +207,9 @@ class ScriptManager {
                 },
                 condition: {
                     urlFilter: '*bot-hosting.cloud*',
-                    resourceTypes: ['xmlhttprequest']
+                    resourceTypes: ['xmlhttprequest'],
+                    initiatorDomains: ['bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net']
                 }
             }
         ];
@@ -382,8 +393,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 scriptManager.getVersion(),
                 scriptManager.getFromStorage('extensionUpdateAvailable', true),
                 scriptManager.getFromStorage('scriptUpdateAvailable', true),
-                scriptManager.getFromStorage('latestScriptVersion', true)
-            ]).then(([enabled, overrideSRC, lastChecked, scriptVersion, extensionUpdate, scriptUpdateAvailable, latestScriptVersion]) => {
+                scriptManager.getFromStorage('latestScriptVersion', true),
+                scriptManager.getFromStorage('joinSupportServer', false)
+            ]).then(([enabled, overrideSRC, lastChecked, scriptVersion, extensionUpdate, scriptUpdateAvailable, latestScriptVersion, joinSupportServer]) => {
                 const version = chrome.runtime.getManifest().version;
                 sendResponse({
                     enabled,
@@ -393,7 +405,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     scriptVersion,
                     extensionUpdate,
                     scriptUpdateAvailable,
-                    latestScriptVersion
+                    latestScriptVersion,
+                    joinSupportServer: joinSupportServer !== false
                 });
             });
             return true;
@@ -412,6 +425,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             });
             return true;
 
+        case 'setJoinSupportServer':
+            scriptManager.setInStorage('joinSupportServer', request.enabled, false).then(() => {
+                scriptManager.setupOverrideRules().then(() => {
+                    sendResponse({ success: true });
+                });
+            });
+            return true;
+            
         case 'setEnabled':
             scriptManager.setEnabled(request.enabled).then(() => {
                 sendResponse({ success: true });
