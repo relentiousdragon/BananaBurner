@@ -6,7 +6,7 @@
     // IF YOU DOWNLOADED IT FROM ANYWHERE ELSE, DELETE AND REPORT IT TO TERMUX LABS
     // IF A STRANGER GAVE YOU THIS FILE 11 TIMES OUT OF 10 YOU ARE GETTING SCREWED.
     const CONFIG = {
-        SCRIPT_VERSION: '3.4', // *
+        SCRIPT_VERSION: '3.5', // *
         FAVICON_URL: 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon48.png', // ?
         MAX_COINS_PER_DAY: 10, // *
         NORMAL_COIN_INTERVAL: localStorage.getItem('bh-normal-coin-interval') ? parseInt(localStorage.getItem('bh-normal-coin-interval')) : 10000, // ?
@@ -14,7 +14,7 @@
         HCAPTCHA_SITEKEY: '21335a07-5b97-4a79-b1e9-b197dc35017a', // *
         UPTIME_MONITOR: 'https://monitor.livestatustracker.com/', // ?
         CONTROL_PANEL_STATUS: 'https://monitor.livestatustracker.com/status/control', // !
-        WIKI_URL: 'https://bothosting.featurebase.app/help', // ?
+        WIKI_URL: 'https://bot-hosting-net.gitbook.io/bot-hosting.net', // ?
         MAX_QUICK_ACTIONS: 9, // ?
         DEBUG: localStorage.getItem('bh-debug') ? localStorage.getItem('bh-debug') === 'true' : false, // *
         ICONS: {
@@ -101,10 +101,6 @@
     if (document.currentScript && document.currentScript.parentNode) {
         document.currentScript.remove();
     }
-
-    if (!resolveBridgeNonce() && CONFIG.DEBUG) {
-        BnLog('WARN', '[BananaBurner] Failed to resolve bridge nonce');
-    } //
 
 
     const escapeHTML = (str) => {
@@ -195,6 +191,10 @@
             );
         }
     };
+
+    if (!resolveBridgeNonce() && CONFIG.DEBUG) {
+        BnLog('WARN', '[BananaBurner] Failed to resolve bridge nonce');
+    }
 
     window.__bh_cacheImage = async (url, expiry = 7 * 24 * 60 * 60 * 1000) => {
         const cacheKey = `bh-img-cache-${url}`;
@@ -339,9 +339,10 @@
             'banana-theme', 'banana-mode', 'banana-sound',
             'bh-notifications', 'bh-custom-theme', 'bh-sound-pack',
             'bh-corner-radius', 'bh-border-width', 'bh-popup-blur',
-            'bh-font-primary', 'bh-font-secondary', 'bh-gradient-bg',
+            'bh-font-primary', 'bh-font-secondary', 'bh-console-font', 'bh-gradient-bg',
             'bh-quick-actions', 'bh-theme-title', 'bh-theme-bg-image',
             'bh-theme-author', 'bh-theme-name', 'bh-toast-colors',
+            'bh-custom-font-primary', 'bh-custom-font-secondary', 'bh-custom-font-import',
             'bh-toast-position', 'bh-cursor-glow', 'bh-cursor-glow-color',
             'bh-lazy-load', 'bh-privacy-mode', 'bh-always-hide', 'bh-start-hidden',
             'bh-splash-v2', 'bh-lightweight-editor', 'bh-stats',
@@ -370,7 +371,9 @@
             },
             int(k, fallback) {
                 const val = getRaw(k);
-                return (val !== null && val !== undefined) ? parseInt(val) : fallback;
+                if (val === null || val === undefined) return fallback;
+                const parsed = parseInt(val);
+                return isNaN(parsed) ? fallback : parsed;
             },
             float(k, fallback) {
                 const val = getRaw(k);
@@ -477,6 +480,7 @@
                 serverCreated: false,
                 position: 'bottom-right'
             }),
+            joinSupportServer: _ls.json('bh-join-support-server', true),
             showAds: localStorage.getItem('bh-show-ads') !== 'false',
             autoConnectConsole: _ls.json('bh-auto-connect-console', true),
             customTheme: _ls.json('bh-custom-theme', null),
@@ -485,8 +489,11 @@
             vfsEnabled: _ls.json('bh-vfs-enabled', true),
             borderWidth: _ls.float('bh-border-width', 1),
             popupBlur: _ls.int('bh-popup-blur', 8),
-            fontPrimary: _ls.get('bh-font-primary') || 'default',
             fontSecondary: _ls.get('bh-font-secondary') || 'default',
+            consoleFont: _ls.get('bh-console-font') || 'default',
+            customPrimaryFont: _ls.get('bh-custom-font-primary') || '',
+            customSecondaryFont: _ls.get('bh-custom-font-secondary') || '',
+            customFontImport: _ls.get('bh-custom-font-import') || '',
             gradientBg: _ls.json('bh-gradient-bg', {
                 enabled: false,
                 color1: '#667eea',
@@ -523,7 +530,8 @@
             startHidden: _ls.json('bh-start-hidden', false),
             splashV2: _ls.json('bh-splash-v2', false),
             lightweightEditor: _ls.json('bh-lightweight-editor', false),
-            activityCacheDays: _ls.int('bh-activity-cache-days', 7)
+            activityCacheDays: _ls.int('bh-activity-cache-days', 7),
+            navOrder: _ls.json('bh-nav-order', ['dashboard', 'coins', 'servers', 'manage', 'market', 'uptime', 'wiki'])
         },
         controlPanel: {
             servers: [],
@@ -904,10 +912,54 @@
 
     function applyFontSettings() {
         const root = document.documentElement;
-        const fontPrimary = FONT_OPTIONS[state.settings.fontPrimary] || FONT_OPTIONS.default;
-        const fontSecondary = FONT_OPTIONS[state.settings.fontSecondary] || FONT_OPTIONS.default;
+        const fontPrimary = state.settings.fontPrimary === 'custom' ? state.settings.customPrimaryFont : (FONT_OPTIONS[state.settings.fontPrimary] || FONT_OPTIONS.default);
+        const fontSecondary = state.settings.fontSecondary === 'custom' ? state.settings.customSecondaryFont : (FONT_OPTIONS[state.settings.fontSecondary] || FONT_OPTIONS.default);
         root.style.setProperty('--font-primary', fontPrimary);
         root.style.setProperty('--font-secondary', fontSecondary);
+
+        let consoleFontValue;
+        if (state.settings.consoleFont === 'default') {
+            consoleFontValue = "'Consolas', 'Monaco', 'Courier New', monospace";
+        } else {
+            const preset = FONT_OPTIONS[state.settings.consoleFont];
+            consoleFontValue = preset ? `${preset}, Consolas, monospace` : `${state.settings.consoleFont}, Consolas, monospace`;
+        }
+
+        const consoleFontSize = state.settings.consoleFont === 'default' ? '0.85rem' : '0.82rem';
+        root.style.setProperty('--console-font', consoleFontValue);
+        root.style.setProperty('--console-font-size', consoleFontSize);
+
+        if (state.pipWindow && state.pipWindow.document) {
+            try {
+                state.pipWindow.document.documentElement.style.setProperty('--console-font', consoleFontValue);
+                state.pipWindow.document.documentElement.style.setProperty('--console-font-size', consoleFontSize);
+            } catch (e) { }
+        }
+
+        if (state.settings.customFontImport) {
+            const importLinks = state.settings.customFontImport.split(',').map(l => l.trim()).filter(l => l);
+            const existingLinks = Array.from(document.querySelectorAll('link[id^="bh-custom-font-link-"]'));
+
+            existingLinks.forEach(link => {
+                const linkUrl = link.getAttribute('href');
+                if (!importLinks.includes(linkUrl)) {
+                    link.remove();
+                }
+            });
+
+            importLinks.forEach((url, index) => {
+                let link = document.querySelector(`link[href="${url}"]`);
+                if (!link) {
+                    link = document.createElement('link');
+                    link.id = `bh-custom-font-link-${index}`;
+                    link.rel = 'stylesheet';
+                    link.href = url;
+                    document.head.appendChild(link);
+                }
+            });
+        } else {
+            document.querySelectorAll('link[id^="bh-custom-font-link-"]').forEach(l => l.remove());
+        }
     }
 
     function applyCornerRadius() {
@@ -1600,21 +1652,57 @@
         }
     }
 
-
     function saveCoinProgress() {
-        try {
-            if (state.coinCollector.timeUntilReset > 0) {
-                const targetDate = Date.now() + state.coinCollector.timeUntilReset;
+        if (state.coinCollector.timeUntilReset <= 0) return;
+        if (!state.user || !state.user.id) {
+            try {
                 localStorage.setItem('bh-coin-persistence', JSON.stringify({
                     coins: state.coinCollector.coinsCollected,
-                    targetDate: targetDate
+                    targetDate: Date.now() + state.coinCollector.timeUntilReset
                 }));
-            }
+            } catch (e) { }
+            return;
+        }
+
+        try {
+            const key = `bh-coin-persistence-${state.user.id}`;
+            const targetDate = Date.now() + state.coinCollector.timeUntilReset;
+            localStorage.setItem(key, JSON.stringify({
+                coins: state.coinCollector.coinsCollected,
+                targetDate: targetDate
+            }));
         } catch (e) { }
     }
 
+    function loadStats() {
+        if (!state.user || !state.user.id) return;
+        const key = `bh-stats-${state.user.id}`;
+        let cached = _ls.json(key, null);
+
+        if (cached === null) {
+            const legacy = _ls.json('bh-stats', null);
+            if (legacy) {
+                BnLog('INFO', `Migrating legacy stats to user ${state.user.id}`);
+                cached = legacy;
+                _ls.set(key, JSON.stringify(cached));
+            } else {
+                cached = {
+                    totalCoinsCollected: 0,
+                    totalServersCreated: 0,
+                    totalCoinsSpent: 0,
+                    highestCreationTime: 0,
+                    totalCreationTime: 0
+                };
+            }
+        }
+
+        state.stats = cached;
+        BnLog('INFO', `Loaded stats for User ${state.user.id}`);
+    }
+
     function saveStats() {
-        localStorage.setItem('bh-stats', JSON.stringify(state.stats));
+        const key = (state.user && state.user.id) ? `bh-stats-${state.user.id}` : 'bh-stats';
+        localStorage.setItem(key, JSON.stringify(state.stats));
     }
 
 
@@ -1643,7 +1731,21 @@
 
     function loadCoinProgress() {
         try {
-            const data = JSON.parse(localStorage.getItem('bh-coin-persistence'));
+            let key = 'bh-coin-persistence';
+            if (state.user && state.user.id) {
+                key = `bh-coin-persistence-${state.user.id}`;
+            }
+
+            let data = _ls.json(key, null);
+
+            if (data === null && state.user && state.user.id) {
+                data = _ls.json('bh-coin-persistence', null);
+                if (data) {
+                    BnLog('INFO', `Migrating legacy coin progress to user ${state.user.id}`);
+                    localStorage.setItem(key, JSON.stringify(data));
+                }
+            }
+
             if (data && data.targetDate > Date.now()) {
                 state.coinCollector.coinsCollected = data.coins;
             } else {
@@ -1722,10 +1824,16 @@
             state.settings.autoConnectConsole = true;
             state.settings.fontPrimary = 'default';
             state.settings.fontSecondary = 'default';
+            state.settings.consoleFont = 'default';
+            state.settings.customPrimaryFont = '';
+            state.settings.customSecondaryFont = '';
+            state.settings.customFontImport = '';
             state.settings.cornerRadius = 19;
             state.settings.popupBlur = 8;
             state.settings.borderWidth = 1;
             state.settings.soundPack = 'default';
+            state.settings.splashV2 = false;
+            state.settings.gradientBg = null;
             state.settings.cursorGlow = false;
             state.settings.cursorGlowColor = 'rgba(34, 211, 238, 0.3)';
             state.settings.toastColors = {
@@ -1737,20 +1845,26 @@
                 banana: 'rgba(245, 158, 11, 0.95)'
             };
 
-            localStorage.removeItem('bh-custom-theme');
-            localStorage.removeItem('bh-theme-title');
-            localStorage.removeItem('bh-theme-bg-image');
-            localStorage.removeItem('bh-theme-author');
-            localStorage.removeItem('bh-theme-name');
-            localStorage.removeItem('bh-font-primary');
-            localStorage.removeItem('bh-font-secondary');
-            localStorage.removeItem('bh-corner-radius');
-            localStorage.removeItem('bh-popup-blur');
-            localStorage.removeItem('bh-border-width');
-            localStorage.removeItem('bh-toast-colors');
-            localStorage.setItem('bh-sound-pack', 'default');
-            localStorage.setItem('bh-cursor-glow', 'false');
-            localStorage.setItem('bh-cursor-glow-color', 'rgba(34, 211, 238, 0.3)');
+            _ls.remove('bh-custom-theme');
+            _ls.remove('bh-theme-title');
+            _ls.remove('bh-theme-bg-image');
+            _ls.remove('bh-theme-author');
+            _ls.remove('bh-theme-name');
+            _ls.remove('bh-font-primary');
+            _ls.remove('bh-font-secondary');
+            _ls.remove('bh-console-font');
+            _ls.remove('bh-custom-font-primary');
+            _ls.remove('bh-custom-font-secondary');
+            _ls.remove('bh-custom-font-import');
+            _ls.remove('bh-corner-radius');
+            _ls.remove('bh-popup-blur');
+            _ls.remove('bh-border-width');
+            _ls.remove('bh-toast-colors');
+            _ls.remove('bh-splash-v2');
+            _ls.remove('bh-gradient-bg');
+            _ls.set('bh-sound-pack', 'default');
+            _ls.set('bh-cursor-glow', 'false');
+            _ls.set('bh-cursor-glow-color', 'rgba(34, 211, 238, 0.3)');
             _ls.remove('bh-active-theme-id');
             state.market.activeThemeId = null;
 
@@ -1799,6 +1913,10 @@
                 popupBlur: state.settings.popupBlur,
                 fontPrimary: state.settings.fontPrimary,
                 fontSecondary: state.settings.fontSecondary,
+                consoleFont: state.settings.consoleFont,
+                customPrimaryFont: state.settings.customPrimaryFont,
+                customSecondaryFont: state.settings.customSecondaryFont,
+                customFontImport: state.settings.customFontImport,
                 gradientBg: state.settings.gradientBg,
                 toastColors: state.settings.toastColors,
                 soundPack: state.settings.soundPack,
@@ -1943,10 +2061,26 @@
                                 state.settings.fontPrimary = data.fontPrimary;
                                 localStorage.setItem('bh-font-primary', data.fontPrimary);
                             }
+                            if (data.customPrimaryFont !== undefined) {
+                                state.settings.customPrimaryFont = data.customPrimaryFont;
+                                localStorage.setItem('bh-custom-font-primary', data.customPrimaryFont);
+                            }
 
                             if (data.fontSecondary) {
                                 state.settings.fontSecondary = data.fontSecondary;
                                 localStorage.setItem('bh-font-secondary', data.fontSecondary);
+                            }
+                            if (data.consoleFont) {
+                                state.settings.consoleFont = data.consoleFont;
+                                localStorage.setItem('bh-console-font', data.consoleFont);
+                            }
+                            if (data.customSecondaryFont !== undefined) {
+                                state.settings.customSecondaryFont = data.customSecondaryFont;
+                                localStorage.setItem('bh-custom-font-secondary', data.customSecondaryFont);
+                            }
+                            if (data.customFontImport !== undefined) {
+                                state.settings.customFontImport = data.customFontImport;
+                                localStorage.setItem('bh-custom-font-import', data.customFontImport);
                             }
 
                             if (data.gradientBg) {
@@ -2001,7 +2135,7 @@
 
                 openConfirmModal('Import Script', `Are you sure you want to import <b>${importedName}</b> by <b>${importedAuthor}</b>?`, () => {
                     importScript(data);
-                }, 'Import', false);
+                }, 'Import', false, null, true);
 
             } catch (err) {
                 BnLog('ERROR', 'Import error:', err);
@@ -4533,7 +4667,7 @@ debug:
         if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
         return `${seconds}s`;
     }
-
+    // 
     const WSManager = {
         connect: async function (identifier) {
             if (state.controlPanelStatus !== 'up') return false;
@@ -5078,7 +5212,7 @@ debug:
         .console-container { display: flex !important; flex-direction: column !important; position: relative !important; top: 0 !important; left: 0 !important; transform: none !important; width: 100% !important; height: 100vh !important; visibility: visible !important; opacity: 1 !important; border:none !important; overflow: hidden !important; }
         .console-header { display: none !important; }
         .console-body { flex: 1 !important; overflow-y: auto !important; height: 100vh !important; min-height: 100vh !important; background: #000 !important; padding: 1rem !important; }
-        .console-line { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 0.85rem; line-height: 1.5; color: #e2e8f0; margin-bottom: 0.25rem; white-space: pre-wrap; word-break: break-all; }
+        .console-line { font-family: var(--console-font, 'Consolas', 'Monaco', 'Courier New', monospace); font-size: var(--console-font-size, 0.85rem); line-height: 1.5; color: #e2e8f0; margin-bottom: 0.25rem; white-space: pre-wrap; word-break: break-all; }
         .console-input-container { display: none !important; }
         .pip-only { display: flex !important; }
         .main-only { display: none !important; }
@@ -5304,6 +5438,8 @@ debug:
             state.user = cached.data;
             state.coinCollector.currentCoins = state.user.coins || 0;
             loadActivityCache();
+            loadStats();
+            loadCoinProgress();
             updateUserProfile();
             return state.user;
         }
@@ -5325,6 +5461,8 @@ debug:
                 _ls.set(CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
 
                 loadActivityCache();
+                loadStats();
+                loadCoinProgress();
 
                 if (state.coinCollector.currentCoins !== prevCoins || state.apiStatus !== prevStatus) {
                     updateDashboard();
@@ -5375,14 +5513,20 @@ debug:
 
     function cleanupActivityCache() {
         if (!state.transactions || !Array.isArray(state.transactions)) return;
-        const maxDays = state.settings.activityCacheDays || 7;
+        let maxDays = state.settings.activityCacheDays;
+        if (isNaN(maxDays) || maxDays <= 0) maxDays = 7;
+
         const now = Date.now();
         const cutoff = now - (maxDays * 24 * 60 * 60 * 1000);
 
         const initialCount = state.transactions.length;
-        state.transactions = state.transactions.filter(t => {
+
+        const sorted = [...state.transactions].sort((a, b) => parseInt(b.date) - parseInt(a.date));
+
+        state.transactions = sorted.filter((t, index) => {
             const date = parseInt(t.date);
-            return !isNaN(date) && date >= cutoff;
+            if (isNaN(date)) return false;
+            return date >= cutoff || index < 20;
         });
 
         if (state.transactions.length > 500) {
@@ -5390,6 +5534,7 @@ debug:
         }
 
         if (state.transactions.length !== initialCount) {
+            BnLog('INFO', `Pruned ${initialCount - state.transactions.length} items from activity cache (Kept ${state.transactions.length})`);
             saveActivityCache();
         }
     }
@@ -5418,13 +5563,13 @@ debug:
                     const cached = _ls.json(key, null);
                     if (cached && Array.isArray(cached)) {
                         const initialCount = cached.length;
-                        const filtered = cached.filter(t => {
+                        const filtered = cached.sort((a, b) => parseInt(b.date) - parseInt(a.date)).filter((t, index) => {
                             const date = parseInt(t.date);
-                            return !isNaN(date) && date >= cutoff;
+                            return !isNaN(date) && (date >= cutoff || index < 20);
                         });
                         if (filtered.length !== initialCount) {
                             localStorage.setItem(key, JSON.stringify(filtered));
-                            BnLog('INFO', `Pruned ${initialCount - filtered.length} expired items from ${key}`);
+                            BnLog('INFO', `Pruned ${initialCount - filtered.length} expired items from ${key} (Kept ${filtered.length})`);
                         }
                     }
                 }
@@ -5941,8 +6086,7 @@ debug:
                 theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light',
                 size: 'normal',
                 callback: function (response) {
-                    const submitBtn = document.getElementById('bh-captcha-submit');
-                    if (submitBtn) submitBtn.style.display = 'flex';
+                    handleHcaptchaSolved(response, true);
                 },
                 'expired-callback': function () {
                     const submitBtn = document.getElementById('bh-captcha-submit');
@@ -5964,13 +6108,23 @@ debug:
         }
     }
 
-    function handleHcaptchaSolved(response) {
+    function handleHcaptchaSolved(response, isAuto = false) {
         const modal = document.getElementById('bh-custom-captcha-modal');
-        if (modal) {
-            modal.classList.remove('visible');
-            setTimeout(() => {
-                if (modal.parentNode) modal.parentNode.removeChild(modal);
-            }, 300);
+        const submitBtn = document.getElementById('bh-captcha-submit');
+
+        if (!isAuto) {
+            if (modal) {
+                modal.classList.remove('visible');
+                setTimeout(() => {
+                    if (modal.parentNode) modal.parentNode.removeChild(modal);
+                }, 300);
+            }
+        } else {
+            if (submitBtn) {
+                submitBtn.style.display = 'flex';
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
+            }
         }
 
         state.coinCollector.waitingForCaptcha = false;
@@ -5980,8 +6134,16 @@ debug:
         showToast('Verifying CAPTCHA...', 'info');
 
         setTimeout(() => {
+            state.coinCollector.totalAttempts++;
+            updateCoinCollectorUI();
             claimCoins(response).then(async result => {
                 if (result.success) {
+                    if (isAuto && modal) {
+                        modal.classList.remove('visible');
+                        setTimeout(() => {
+                            if (modal.parentNode) modal.parentNode.removeChild(modal);
+                        }, 300);
+                    }
                     const added = (result.data.coinsClaimed || (state.coinCollector.coinsCollected + 1)) - state.coinCollector.coinsCollected;
                     state.coinCollector.coinsCollected = result.data.coinsClaimed || (state.coinCollector.coinsCollected + 1);
 
@@ -6013,8 +6175,8 @@ debug:
                 } else {
                     const error = result.error || {};
                     if (error.message && error.message.includes('ratelimited')) {
-                        showToast('Going too fast! Waiting 10 seconds', 'warn');
-                        setTimeout(attemptCoinCollection, 10000);
+                        showToast('Going too fast! Waiting 15 seconds', 'warn');
+                        setTimeout(attemptCoinCollection, 15000);
                         state.coinCollector.captchaClaimInProgress = false;
                     } else if (error.coinsClaimed === 10) {
                         state.coinCollector.coinsCollected = error.coinsClaimed || 10;
@@ -6024,13 +6186,23 @@ debug:
                         stopCoinCollector();
                         state.coinCollector.captchaClaimInProgress = false;
                     } else {
-                        showToast('CAPTCHA verification failed. Retrying..', 'error');
-                        state.coinCollector.captchaClaimInProgress = false;
-                        setTimeout(attemptCoinCollection, CONFIG.NORMAL_COIN_INTERVAL);
+                        if (isAuto) {
+                            if (submitBtn) {
+                                submitBtn.disabled = false;
+                                submitBtn.innerHTML = 'Confirm';
+                                submitBtn.style.display = 'flex';
+                            }
+                            showToast('CAPTCHA verification failed, try again.', 'error');
+                            state.coinCollector.captchaClaimInProgress = false;
+                        } else {
+                            showToast('CAPTCHA verification failed. Retrying..', 'error');
+                            state.coinCollector.captchaClaimInProgress = false;
+                            setTimeout(attemptCoinCollection, CONFIG.NORMAL_COIN_INTERVAL);
+                        }
                     }
                 }
             });
-        }, 2500);
+        }, isAuto ? 1000 : 2500);
     }
 
     function handleCaptchaError() {
@@ -6146,6 +6318,8 @@ debug:
     }
 
     async function InitialCheck() {
+        state.coinCollector.totalAttempts++;
+        updateCoinCollectorUI();
         const result = await claimCoins();
 
         if (result.success) {
@@ -7611,7 +7785,7 @@ debug:
             <div class="notification-settings" style="padding: 1rem; display: flex; flex-direction: column; gap: 1.5rem; background: var(--modal-tertiary-bg); border-radius: 12px; margin: 1rem;">
                 <div class="notif-item" style="display: flex; justify-content: space-between; align-items: center;">
                     <div class="notif-info">
-                        <div style="font-weight: 600;">Coin Collector Done</div>
+                        <div style="font-weight: 600; color: var(--text-primary);">Coin Collector Done</div>
                         <div style="font-size: 0.8em; color: var(--text-secondary);">Notify when daily limit is reached</div>
                     </div>
                     <label class="switch">
@@ -7622,7 +7796,7 @@ debug:
 
                 <div class="notif-item" style="display: flex; justify-content: space-between; align-items: center;">
                     <div class="notif-info">
-                        <div style="font-weight: 600;">Captcha Required</div>
+                        <div style="font-weight: 600; color: var(--text-primary);">Captcha Required</div>
                         <div style="font-size: 0.8em; color: var(--text-secondary);">Notify when captcha needs solving</div>
                     </div>
                     <label class="switch">
@@ -7633,7 +7807,7 @@ debug:
 
                 <div class="notif-item" style="display: flex; justify-content: space-between; align-items: center;">
                     <div class="notif-info">
-                        <div style="font-weight: 600;">Server Created</div>
+                        <div style="font-weight: 600; color: var(--text-primary);">Server Created</div>
                         <div style="font-size: 0.8em; color: var(--text-secondary);">Notify when server is successfully created</div>
                     </div>
                     <label class="switch">
@@ -7645,7 +7819,7 @@ debug:
                 <div class="notif-item" style="border-top: 1px solid var(--border-light); padding-top: 1rem; margin-top: 0.5rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                         <div class="notif-info">
-                            <div style="font-weight: 600;">Toast Position</div>
+                            <div style="font-weight: 600; color: var(--text-primary);">Toast Position</div>
                             <div style="font-size: 0.8em; color: var(--text-secondary);">Where notifications appear (shortcut: Alt+N)</div>
                         </div>
                         <select id="notif-position-select" class="form-select" style="max-width: 140px; border: 1px solid var(--border-light) !important; border-radius: var(--border-radius) !important; appearance: none; background-color: var(--bg-primary) !important; padding: 0.4rem 0.75rem;">
@@ -7697,19 +7871,21 @@ debug:
                     <h4 style="color: var(--text-primary); margin-bottom: 1rem; border-bottom: 1px solid var(--border-light); padding-bottom: 0.5rem;">Typography</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                         <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
-                            <label style="font-size: 0.9em; font-weight: 600;">Primary Font</label>
-                            <select id="font-primary-select" class="form-select" style="width: 100%; border: 1px solid var(--border-light) !important; border-radius: var(--border-radius) !important; appearance: none; background-color: var(--bg-primary) !important; padding: 0.4rem 0.75rem; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
-                              ${['default', 'sans-serif', 'serif', 'monospace', 'pixelated', 'rounded', 'elegant', 'outfit', 'inter', 'montserrat', 'roboto', 'poppins', 'cyberpunk', 'pirate', 'onepiece', 'minecraft'].map(f =>
-                `<option class="notranslate" value="${f}" ${state.settings.fontPrimary === f ? 'selected' : ''}>${f.charAt(0).toUpperCase() + f.slice(1)}</option>`
-            ).join('')}
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Primary Font</label>
+                            <select id="font-primary-select" class="form-select" style="width: 100%; border: 1px solid var(--border-light) !important; border-radius: var(--border-radius) !important; appearance: none; background-color: var(--bg-primary) !important; padding: 0.4rem 0.75rem; font-family: ${state.settings.fontPrimary === 'custom' ? state.settings.customPrimaryFont : (FONT_OPTIONS[state.settings.fontPrimary] || FONT_OPTIONS.default)}; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                              ${['default', 'sans-serif', 'serif', 'monospace', 'pixelated', 'rounded', 'elegant', 'outfit', 'inter', 'montserrat', 'roboto', 'poppins', 'cyberpunk', 'pirate', 'onepiece', 'minecraft', ...(state.settings.fontPrimary === 'custom' ? ['custom'] : [])].map(f => {
+                const fontFamily = f === 'custom' ? state.settings.customPrimaryFont : (FONT_OPTIONS[f] || FONT_OPTIONS.default);
+                return `<option class="notranslate" value="${f}" ${state.settings.fontPrimary === f ? 'selected' : ''} style="font-family: ${fontFamily} !important;">${f.charAt(0).toUpperCase() + f.slice(1)}</option>`;
+            }).join('')}
                             </select>
                         </div>
                         <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
-                            <label style="font-size: 0.9em; font-weight: 600;">Secondary Font</label>
-                            <select id="font-secondary-select" class="form-select" style="width: 100%; border: 1px solid var(--border-light) !important; border-radius: var(--border-radius) !important; appearance: none; background-color: var(--bg-primary) !important; padding: 0.4rem 0.75rem; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
-                              ${['default', 'sans-serif', 'serif', 'monospace', 'pixelated', 'rounded', 'elegant', 'outfit', 'inter', 'montserrat', 'roboto', 'poppins', 'cyberpunk', 'pirate', 'onepiece', 'minecraft'].map(f =>
-                `<option class="notranslate" value="${f}" ${state.settings.fontSecondary === f ? 'selected' : ''}>${f.charAt(0).toUpperCase() + f.slice(1)}</option>`
-            ).join('')}
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Secondary Font</label>
+                            <select id="font-secondary-select" class="form-select" style="width: 100%; border: 1px solid var(--border-light) !important; border-radius: var(--border-radius) !important; appearance: none; background-color: var(--bg-primary) !important; padding: 0.4rem 0.75rem; font-family: ${state.settings.fontSecondary === 'custom' ? state.settings.customSecondaryFont : (FONT_OPTIONS[state.settings.fontSecondary] || FONT_OPTIONS.default)}; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                              ${['default', 'sans-serif', 'serif', 'monospace', 'pixelated', 'rounded', 'elegant', 'outfit', 'inter', 'montserrat', 'roboto', 'poppins', 'cyberpunk', 'pirate', 'onepiece', 'minecraft', ...(state.settings.fontSecondary === 'custom' ? ['custom'] : [])].map(f => {
+                const fontFamily = f === 'custom' ? state.settings.customSecondaryFont : (FONT_OPTIONS[f] || FONT_OPTIONS.default);
+                return `<option class="notranslate" value="${f}" ${state.settings.fontSecondary === f ? 'selected' : ''} style="font-family: ${fontFamily} !important;">${f.charAt(0).toUpperCase() + f.slice(1)}</option>`;
+            }).join('')}
                             </select>
                         </div>
                     </div>
@@ -7720,21 +7896,21 @@ debug:
                     <div style="display: flex; flex-direction: column; gap: 1rem;">
                         <div class="setting-item">
                             <div class="setting-info">
-                                <div style="font-weight: 600;">Corner Radius</div>
+                                <div style="font-weight: 600; color: var(--text-primary);">Corner Radius</div>
                                 <div style="font-size: 0.8em; color: var(--text-secondary);">${state.settings.cornerRadius}px</div>
                             </div>
                             <input type="range" id="corner-radius-slider" min="0" max="24" value="${state.settings.cornerRadius}" style="width: 120px; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
                         </div>
                         <div class="setting-item">
                             <div class="setting-info">
-                                <div style="font-weight: 600;">Popup Blur</div>
+                                <div style="font-weight: 600; color: var(--text-primary);">Popup Blur</div>
                                 <div style="font-size: 0.8em; color: var(--text-secondary);">${state.settings.popupBlur}px</div>
                             </div>
                             <input type="range" id="popup-blur-slider" min="0" max="20" value="${state.settings.popupBlur}" style="width: 120px; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
                         </div>
                         <div class="setting-item">
                             <div class="setting-info">
-                                <div style="font-weight: 600;">Border Width</div>
+                                <div style="font-weight: 600; color: var(--text-primary);">Border Width</div>
                                 <div style="font-size: 0.8em; color: var(--text-secondary);">${state.settings.borderWidth !== undefined ? state.settings.borderWidth : 0.5}px</div>
                             </div>
                             <input type="range" id="border-width-slider" min="0" max="4" step="0.5" value="${state.settings.borderWidth !== undefined ? state.settings.borderWidth : 0.5}" style="width: 120px; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
@@ -7756,7 +7932,7 @@ debug:
 
               <div class="setting-item" style="display: ${localStorage.getItem('OSRC') === 'true' ? 'none' : 'flex'}; justify-content: space-between; align-items: center;">
                 <div class="setting-info">
-                  <div style="font-weight: 600;">Start Hidden</div>
+                  <div style="font-weight: 600; color: var(--text-primary);">Start Hidden</div>
                   <div style="font-size: 0.8em; color: var(--text-secondary);">Show only floating banana while loading</div>
                 </div>
                 <label class="switch">
@@ -7767,7 +7943,7 @@ debug:
 
               <div id="splash-v2-setting-item" class="setting-item" style="display: ${state.settings.startHidden ? 'none' : 'flex'}; justify-content: space-between; align-items: center;">
                 <div class="setting-info">
-                  <div style="font-weight: 600;">Splash V2</div>
+                  <div style="font-weight: 600; color: var(--text-primary);">Splash V2</div>
                   <div style="font-size: 0.8em; color: var(--text-secondary);">Secondary splash screen</div>
                 </div>
                 <label class="switch">
@@ -7856,6 +8032,8 @@ debug:
                     <span class="slider round"></span>
                 </label>
               </div>
+
+
 
               <div class="setting-item">
                 <div class="setting-info">
@@ -7991,7 +8169,7 @@ debug:
                 <div style="display: flex; flex-direction: column; gap: 1rem;">
                   <div class="form-group">
                     <label style="display: block; font-size: 0.8em; color: var(--text-secondary); margin-bottom: 0.4rem;">Webhook URL</label>
-                    <input type="text" id="webhook-url-input" class="form-control" placeholder="https://..." style="width: 100%; padding: 0.6rem; border-radius: 6px; background: var(--bg-secondary); border: 1px solid var(--border-light); color: var(--text-primary);">
+                    <input type="text" id="webhook-url-input" class="form-control" placeholder="https://..." style="width: 100%; padding: 0.6rem; border-radius: 6px; background: var(--bg-secondary); border: 1px solid rgba(128, 128, 128, 0.3); color: var(--text-primary);">
                   </div>
                   <div class="setting-item" style="padding: 0;">
                     <div class="setting-info">
@@ -8000,6 +8178,17 @@ debug:
                     </div>
                     <label class="switch">
                       <input type="checkbox" id="webhook-discord-toggle">
+                      <span class="slider round"></span>
+                    </label>
+                  </div>
+                  <div class="setting-item" style="padding: 0;">
+                    <div class="setting-info" style="display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap;">
+                      <div style="font-weight: 600; font-size: 0.85em;">Relay</div>
+                      <i class="fas fa-info-circle" id="webhook-relay-info-btn" style="font-size: 0.7em; color: var(--accent-primary); cursor: pointer; opacity: 0.8; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'"></i>
+                      <div style="font-size: 0.75em; color: var(--text-secondary); width: 100%;">Route through BananaBurner</div>
+                    </div>
+                    <label class="switch">
+                      <input type="checkbox" id="webhook-relay-toggle">
                       <span class="slider round"></span>
                     </label>
                   </div>
@@ -8016,6 +8205,7 @@ debug:
     `;
 
         modal.querySelectorAll('select, input:not([type="range"])').forEach(el => {
+            if (el.classList.contains('form-control')) return;
             el.style.setProperty('border', 'none', 'important');
             el.style.setProperty('border-width', '0px', 'important');
             el.style.setProperty('outline', 'none', 'important');
@@ -8136,6 +8326,8 @@ debug:
             }
         });
 
+
+
         const showAdsToggle = modal.querySelector('#settings-show-ads');
         if (showAdsToggle) {
             showAdsToggle.onchange = (e) => {
@@ -8250,6 +8442,10 @@ debug:
             fontPrimarySelect.onchange = () => {
                 state.settings.fontPrimary = fontPrimarySelect.value;
                 localStorage.setItem('bh-font-primary', fontPrimarySelect.value);
+
+                const fontFamily = fontPrimarySelect.value === 'custom' ? state.settings.customPrimaryFont : (FONT_OPTIONS[fontPrimarySelect.value] || FONT_OPTIONS.default);
+                fontPrimarySelect.style.fontFamily = fontFamily;
+
                 applyFontSettings();
             };
         }
@@ -8259,6 +8455,10 @@ debug:
             fontSecondarySelect.onchange = () => {
                 state.settings.fontSecondary = fontSecondarySelect.value;
                 localStorage.setItem('bh-font-secondary', fontSecondarySelect.value);
+
+                const fontFamily = fontSecondarySelect.value === 'custom' ? state.settings.customSecondaryFont : (FONT_OPTIONS[fontSecondarySelect.value] || FONT_OPTIONS.default);
+                fontSecondarySelect.style.fontFamily = fontFamily;
+
                 applyFontSettings();
             };
         }
@@ -8461,7 +8661,7 @@ debug:
             deleteHistoryBtn.onclick = () => {
                 openConfirmModal('Delete Activity History', 'Are you sure you want to delete all activity history? This will clear your dashboard coin logs. <b>This cannot be undone.</b>', () => {
                     deleteActivityHistory();
-                }, 'Delete', true);
+                }, 'Delete', true, null, true);
             };
         }
 
@@ -8510,7 +8710,7 @@ debug:
 
                     showToast('Localstorage and caches cleared! Reloading...', 'success');
                     setTimeout(() => location.reload(), 1500);
-                }, 'Reset All', true);
+                }, 'Reset All', true, null, true);
             };
         }
 
@@ -8549,11 +8749,11 @@ debug:
         <div class="affiliate-info">
           <div class="affiliate-header">
             <i class="fas fa-gift"></i>
-            <h4>Share your affiliate link and earn free coins!</h4>
+            <h4 style="color: var(--text-primary);">Share your affiliate link and earn free coins!</h4>
           </div>
           
           <div class="affiliate-link-section">
-            <label>Your Link</label>
+            <label style="color: var(--text-secondary); font-size: 0.8em; font-weight: 600; display: block; margin-bottom: 0.4rem;">Your Link</label>
             <div class="affiliate-link-box" style="display: flex; gap: 0.5rem;">
               <input type="text" value="${data.link}" readonly id="affiliate-link-input" style="flex: 1; padding: 0.5rem; border-radius: 6px; background: var(--bg-secondary); border: 1px solid var(--border-light); color: var(--text-primary);">
               <button class="btn btn-sm btn-primary" id="copy-affiliate-link" style="padding: 0.5rem 1rem; flex: 0 0 auto;">
@@ -8570,12 +8770,12 @@ debug:
           
           <div class="affiliate-stats">
             <div class="affiliate-stat">
-              <div class="stat-value">${data.uses}</div>
-              <div class="stat-label">Referral Signups</div>
+              <div class="stat-value" style="color: var(--text-primary);">${data.uses}</div>
+              <div class="stat-label" style="color: var(--text-secondary); font-size: 0.85em;">Referral Signups</div>
             </div>
             <div class="affiliate-stat">
-              <div class="stat-value">${estimatedCoins}</div>
-              <div class="stat-label">Estimated Coins Earned</div>
+              <div class="stat-value" style="color: var(--text-primary);">${estimatedCoins}</div>
+              <div class="stat-label" style="color: var(--text-secondary); font-size: 0.85em;">Estimated Coins Earned</div>
             </div>
           </div>
           
@@ -8603,13 +8803,22 @@ debug:
         }
     }
 
-    async function deleteWebhook(id) {
-        openConfirmModal('Delete Webhook', 'Are you sure you want to delete this webhook?', async () => {
+    async function deleteWebhook(id, url) {
+        openConfirmModal('Delete Webhook', 'Are you sure you want to delete this webhook? Any associated relay configuration will also be removed.', async () => {
             try {
                 const btn = document.querySelector(`.delete-webhook-btn[data-id="${id}"]`);
                 if (btn) {
                     btn.disabled = true;
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                }
+
+                if (url && url.includes('/bb/relay/')) {
+                    const relayId = url.split('/bb/relay/')[1];
+                    if (relayId) {
+                        await fetch(`${CONFIG.UPTIME_MONITOR}bb/relay/config?id=${relayId}`, {
+                            method: 'DELETE'
+                        }).catch(e => BnLog('ERROR', 'Relay config delete failed', e));
+                    }
                 }
 
                 const response = await fetchWithRetry(`/api/webhooks/${id}`, {
@@ -8658,31 +8867,63 @@ debug:
             }
 
             const webhooks = await response.json();
+            const relayPattern = /\/bb\/relay\/([a-z0-9]+)/i;
+
+            const currentRelayIds = webhooks
+                .filter(w => w.url && w.url.includes('/bb/relay/'))
+                .map(w => w.url.match(relayPattern)?.[1])
+                .filter(Boolean);
+
+            if (currentRelayIds.length > 0) {
+                const stored = _ls.json('bh-relay-ids', []);
+                const merged = [...new Set([...stored, ...currentRelayIds])];
+                _ls.set('bh-relay-ids', JSON.stringify(merged));
+            }
 
             if (webhooks && webhooks.length > 0) {
                 if (createBtn) createBtn.style.display = 'none';
-                container.innerHTML = webhooks.map(webhook => `
-          <div class="webhook-item" style="background: var(--modal-tertiary-bg); padding: 1rem; border-radius: 12px; border: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                container.innerHTML = webhooks.map(webhook => {
+                    const isRelay = relayPattern.test(webhook.url);
+                    const displayUrl = isRelay ? 'Relayed Webhook' : webhook.url;
+
+                    return `
+          <div class="webhook-item" style="background: var(--modal-tertiary-bg); padding: 0.9rem 1.1rem; border-radius: 12px; border: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
             <div style="flex: 1; overflow: hidden; margin-right: 1rem;">
               <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
                 <span class="badge ${webhook.type == 'discord' ? 'badge-primary' : 'badge-secondary'}" style="font-size: 0.65rem; padding: 2px 6px;">${webhook.type == 'discord' ? 'Discord' : 'Generic'}</span>
-                <span style="font-size: 0.7rem; color: var(--text-secondary); font-family: monospace;">ID: ${webhook.id}</span>
+                <!-- ${isRelay ? `<span class="badge" style="background: var(--accent-primary); color: #000; font-size: 0.65rem; padding: 2px 6px;">RELAY</span>` : ''} -->
+                <span style="font-size: 0.7rem; color: var(--text-secondary); font-family: monospace; opacity: 0.8;">ID: ${webhook.id}</span>
               </div>
-              <div style="font-size: 0.85rem; color: var(--text-primary); white-space: nowrap; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;" title="${webhook.url}">
-                ${webhook.url}
+              <div style="font-size: 0.85rem; color: var(--text-primary); white-space: nowrap; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;" title="${displayUrl}">
+                ${displayUrl}
               </div>
             </div>
-            <button class="btn btn-danger btn-sm delete-webhook-btn" data-id="${webhook.id}" style="padding: 0.4rem 0.6rem; flex-shrink: 0;">
-              <i class="fas fa-trash-alt"></i><span class="btn-text mobile-hide" style="margin-left: 0.4rem;">Delete</span>
-            </button>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              ${isRelay ? `
+              <button class="btn btn-secondary btn-sm relay-config-btn" data-id="${webhook.id}" data-url="${webhook.url}" style="padding: 0.35rem 0.6rem; font-size: 0.8rem; flex-shrink: 0;">
+                <i class="fas fa-cog" style="font-size: 0.95em;"></i><span class="btn-text mobile-hide" style="margin-left: 0.35rem;">Config</span>
+              </button>
+              ` : ''}
+              <button class="btn btn-danger btn-sm delete-webhook-btn" data-id="${webhook.id}" data-url="${webhook.url}" style="padding: 0.35rem 0.6rem; font-size: 0.8rem; flex-shrink: 0;">
+                <i class="fas fa-trash-alt" style="font-size: 0.95em;"></i><span class="btn-text mobile-hide" style="margin-left: 0.35rem;">Delete</span>
+              </button>
+            </div>
           </div>
-        `).join('');
+        `}).join('');
 
                 container.querySelectorAll('.delete-webhook-btn').forEach(btn => {
                     btn.onclick = (e) => {
                         e.stopPropagation();
                         const id = btn.dataset.id;
-                        if (id) window.deleteWebhook(id);
+                        const url = btn.dataset.url;
+                        if (id) window.deleteWebhook(id, url);
+                    };
+                });
+
+                container.querySelectorAll('.relay-config-btn').forEach(btn => {
+                    btn.onclick = (e) => {
+                        e.stopPropagation();
+                        showRelayConfig(btn.dataset.id, btn.dataset.url);
                     };
                 });
             } else {
@@ -8707,6 +8948,7 @@ debug:
             createBtn.onclick = () => {
                 form.style.display = 'block';
                 createBtn.style.display = 'none';
+                if (container) container.style.display = 'none';
             };
         }
 
@@ -8715,6 +8957,31 @@ debug:
             cancelBtn.onclick = () => {
                 form.style.display = 'none';
                 createBtn.style.display = 'flex';
+                if (container) container.style.display = 'block';
+            };
+        }
+
+        const relayBtn = document.getElementById('webhook-relay-info-btn');
+        if (relayBtn) {
+            relayBtn.onclick = (e) => {
+                e.stopPropagation();
+                showRelayInfoPopup();
+            };
+        }
+
+        const discordToggle = document.getElementById('webhook-discord-toggle');
+        const relayToggle = document.getElementById('webhook-relay-toggle');
+
+        if (relayToggle && discordToggle) {
+            relayToggle.onchange = () => {
+                if (relayToggle.checked) {
+                    discordToggle.checked = true;
+                }
+            };
+            discordToggle.onchange = () => {
+                if (!discordToggle.checked) {
+                    relayToggle.checked = false;
+                }
             };
         }
 
@@ -8723,29 +8990,70 @@ debug:
             saveBtn.onclick = async () => {
                 const urlInput = document.getElementById('webhook-url-input');
                 const discordToggle = document.getElementById('webhook-discord-toggle');
-                const url = urlInput.value.trim();
+                const relayToggle = document.getElementById('webhook-relay-toggle');
+
+                let url = urlInput.value.trim();
                 const isDiscord = discordToggle.checked;
+                const isRelay = relayToggle ? relayToggle.checked : false;
 
                 if (!url) {
                     showToast('Please enter a webhook URL', 'warn');
                     return;
                 }
 
-                if (isDiscord) {
-                    const discordRegex = /https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/.+/;
-                    if (!discordRegex.test(url)) {
-                        showToast('Invalid Discord webhook URL', 'error');
-                        return;
-                    }
+                if (isRelay && !isDiscord) {
+                    showToast('Relay requires Discord Webhook to be enabled', 'warn');
+                    return;
                 }
 
                 saveBtn.disabled = true;
                 saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
 
                 try {
+                    if (isDiscord) {
+                        const discordRegex = /https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/.+/;
+                        if (!discordRegex.test(url)) {
+                            showToast('Invalid Discord webhook URL', 'error');
+                            return;
+                        }
+
+                        if (isRelay) {
+                            try {
+                                const configRes = await fetch(`${CONFIG.UPTIME_MONITOR}bb/relay/config`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        wh: urlInput.value.trim(),
+                                        reminderMode: '2days',
+                                        muteReminders: false,
+                                        muteRenew: false,
+                                        muteSuspended: false
+                                    })
+                                });
+
+                                if (configRes.ok) {
+                                    const data = await configRes.json();
+                                    if (data.relayId) {
+                                        url = `${CONFIG.UPTIME_MONITOR}bb/relay/${data.relayId}`;
+                                    } else {
+                                        throw new Error('No relay ID returned');
+                                    }
+                                } else {
+                                    const err = await configRes.json().catch(() => ({}));
+                                    showToast(err.error || 'Relay validation failed', 'error');
+                                    if (err.detail) BnLog('ERROR', 'Relay detail:', err.detail);
+                                    return;
+                                }
+                            } catch (e) {
+                                showToast('Failed to reach relay server', 'error');
+                                return;
+                            }
+                        }
+                    }
+
                     const res = await fetchWithRetry('/api/webhooks', {
                         method: 'POST',
-                        body: JSON.stringify({ url, discord: isDiscord }),
+                        body: JSON.stringify({ url, discord: isRelay ? false : isDiscord }),
                         headers: {
                             ...getHeaders(),
                             'Content-Type': 'application/json'
@@ -8754,9 +9062,22 @@ debug:
 
                     if (res && res.ok) {
                         showToast('Webhook created successfully!', 'success');
+
+                        if (isRelay && url.includes('/bb/relay/')) {
+                            const match = url.match(/\/bb\/relay\/([a-z0-9]+)/i);
+                            if (match && match[1]) {
+                                const stored = _ls.json('bh-relay-ids', []);
+                                if (!stored.includes(match[1])) {
+                                    stored.push(match[1]);
+                                    _ls.set('bh-relay-ids', JSON.stringify(stored));
+                                }
+                            }
+                        }
                         urlInput.value = '';
+                        if (relayToggle) relayToggle.checked = false;
                         form.style.display = 'none';
                         createBtn.style.display = 'flex';
+                        if (container) container.style.display = 'block';
                         loadWebhooksContent();
                     } else {
                         const err = await res.json().catch(() => ({}));
@@ -8769,6 +9090,256 @@ debug:
                     saveBtn.innerHTML = 'Create Webhook';
                 }
             };
+        }
+    }
+
+    function showRelayInfoPopup() {
+        const title = '<i class="fas fa-info-circle"></i> About Webhook Relay';
+        const msg = `
+            <div style="font-size: 0.9em;">
+                <p>Your bot-hosting webhook is routed through <b>Banana Burner's</b> server and then forwarded to the Discord webhook you provided.</p>
+                <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-light); margin: 0.75rem 0;">
+                    Only the Discord webhook URL is saved for configuration and customizability.
+                </div>
+                <p>Webhook payloads are <b>not stored</b>. You can delete your relay config at any time, and it will be deleted automatically if unused for 7 days.</p>
+                <p style="color: var(--text-secondary); font-size: 0.85em; margin-top: 0.5rem;">Relay enables features like renewal reminders and custom embed formatting, you can host your own relay server and use it if you want more freedom.</p>
+            </div>
+        `;
+        openConfirmModal(title, msg, () => { }, 'Got it', false, null, true);
+    }
+
+    function showShareDetailsInfoPopup() {
+        const title = '<i class="fas fa-info-circle"></i> Sharing Server Details';
+        const msg = `
+            <div style="font-size: 0.9em;">
+                <p>When enabled, BananaBurner will periodically share a snapshot of your server details with the relay server.</p>
+                <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-light); margin: 0.75rem 0;">
+                    <ul style="margin: 0; padding-left: 1.2rem; color: var(--text-primary);">
+                        <li>Server Name</li>
+                        <li>Server ID</li>
+                        <li>Plan Name</li>
+                        <li>Monthly & Weekly Costs</li>
+                    </ul>
+                </div>
+                <p>These details will be included in the Discord webhook embeds for easier identification of which server is renewing or suspended.</p>
+                <p style="color: var(--text-secondary); font-size: 0.85em;">Snapshots are deleted if the relay is unused for 7 days.</p>
+            </div>
+        `;
+        openConfirmModal(title, msg, () => { }, 'OK!', false, null, true);
+    }
+
+    const relaySnapshotsSent = new Set();
+    async function sendRelaySnapshot(relayId) {
+        const snapshots = {};
+        const baseUrl = CONFIG.UPTIME_MONITOR.replace(/\/$/, '');
+
+        for (const serverId in state.serverDetailsCache) {
+            const entry = state.serverDetailsCache[serverId];
+            const data = entry?.data;
+            if (!data) continue;
+
+            const snap = {
+                name: data.name || 'Unknown',
+                plan: data.plan?.name || data.meta?.plan || 'Unknown',
+                monthlyCost: data.plan?.coinsPerMonth || data.monthly_cost,
+                weeklyCost: data.plan?.coinsPerMonth ? Math.ceil(data.plan.coinsPerMonth / 4) : data.weekly_cost,
+                suspended: !!data.suspended
+            };
+
+            if (data.serverid) snapshots[data.serverid] = snap;
+            if (data.identifier) snapshots[data.identifier] = snap;
+            if (!data.serverid && !data.identifier) snapshots[serverId] = snap;
+        }
+
+        if (Object.keys(snapshots).length === 0) {
+            if (CONFIG.DEBUG) BnLog('RELAY', `No valid snapshot data for relay ${relayId}`);
+            return;
+        }
+
+        try {
+            await fetchWithRetry(`${baseUrl}/bb/relay/snapshot/${relayId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ snapshots })
+            });
+            if (CONFIG.DEBUG) BnLog('RELAY', `Successfully sent snapshot to relay ${relayId} (${Object.keys(snapshots).length} keys)`);
+        } catch (e) {
+            BnLog('ERROR', 'Failed to send relay snapshot:', e);
+        }
+    }
+
+    async function pRelaySnapshots() {
+        if (CONFIG.DEBUG) BnLog('RELAY', 'Starting relay snapshot check...');
+        const relayIds = new Set();
+
+        const cachedRelays = _ls.json('bh-relay-ids', []);
+        cachedRelays.forEach(id => relayIds.add(id));
+
+        state.settings.quickActions.forEach(a => {
+            if (a.type === 'url' && a.url.includes('/bb/relay/')) {
+                const match = a.url.match(/\/bb\/relay\/([a-z0-9]+)/i);
+                if (match && match[1]) relayIds.add(match[1]);
+            }
+        });
+
+        if (relayIds.size === 0) {
+            if (CONFIG.DEBUG) BnLog('RELAY', 'No active relays known. Visit the Webhooks tab to sync.');
+            return;
+        }
+
+        if (CONFIG.DEBUG) BnLog('RELAY', `Found ${relayIds.size} tracked relays. Checking configs...`);
+
+        const baseUrl = CONFIG.UPTIME_MONITOR.replace(/\/$/, '');
+        for (const relayId of relayIds) {
+            try {
+                const res = await fetchWithRetry(`${baseUrl}/bb/relay/config?id=${relayId}`);
+                if (res && res.ok) {
+                    const config = await res.json();
+                    if (config.shareDetails) {
+                        if (CONFIG.DEBUG) BnLog('RELAY', `Triggering snapshot for ${relayId} (shareDetails is ON)`);
+                        await sendRelaySnapshot(relayId);
+                    } else if (CONFIG.DEBUG) {
+                        BnLog('RELAY', `Snapshot skipped for ${relayId}: shareDetails is OFF`);
+                    }
+                }
+            } catch (e) {
+                if (CONFIG.DEBUG) BnLog('WARN', `Relay config check failed for ${relayId}:`, e);
+            }
+        }
+    }
+
+    function startRelaySnapshots() {
+        setTimeout(pRelaySnapshots, 5000);
+        setInterval(pRelaySnapshots, 60000);
+    }
+
+    async function showRelayConfig(id, fullUrl) {
+        const relayId = fullUrl.split('/bb/relay/')[1];
+        if (!relayId) {
+            showToast('Invalid relay URL', 'error');
+            return;
+        }
+
+        try {
+            const res = await fetch(`${CONFIG.UPTIME_MONITOR}bb/relay/config?id=${relayId}`);
+            const config = res.ok ? await res.json() : { reminderMode: '2days', muteReminders: false, muteRenew: false, muteSuspended: false };
+
+            const title = '<i class="fas fa-cog"></i> Relay Settings';
+            const msg = `
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    ${config.webhookUrl ? `
+                    <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-light); font-size: 0.85em; word-break: break-all;">
+                        <div style="color: var(--text-secondary); margin-bottom: 0.25rem;">Relayed Webhook:</div>
+                        <div style="color: var(--text-primary); font-family: monospace;">${config.webhookUrl}</div>
+                    </div>
+                    ` : ''}
+                    <div class="setting-item" style="padding: 0;">
+                        <div class="setting-info">
+                            <div style="font-weight: 600; font-size: 0.9em;">Mute Reminders</div>
+                            <div style="font-size: 0.75em; color: var(--text-secondary);">Don't send any renewal warnings</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="relay-mute-reminders" ${config.muteReminders ? 'checked' : ''}>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div id="relay-frequency-section" class="setting-item" style="padding: 0; display: ${config.muteReminders ? 'none' : 'flex'};">
+                        <div class="setting-info">
+                            <div style="font-weight: 600; font-size: 0.9em;">Reminder Frequency</div>
+                            <div style="font-size: 0.75em; color: var(--text-secondary);">When to send a renewal warning</div>
+                        </div>
+                        <select id="relay-reminder-mode" class="form-control" style="width: auto; background: var(--bg-secondary); border: 1px solid rgba(128, 128, 128, 0.4); color: var(--text-primary); border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.85rem; appearance: auto !important; -webkit-appearance: auto !important;">
+                            <option value="2days" ${config.reminderMode === '2days' ? 'selected' : ''}>2 days before</option>
+                            <option value="1day" ${config.reminderMode === '1day' ? 'selected' : ''}>1 day before</option>
+                        </select>
+                    </div>
+                    <div class="setting-item" style="padding: 0;">
+                        <div class="setting-info">
+                            <div style="font-weight: 600; font-size: 0.9em;">Mute Renewals</div>
+                            <div style="font-size: 0.75em; color: var(--text-secondary);">Don't notify when server is renewed</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="relay-mute-renew" ${config.muteRenew ? 'checked' : ''}>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item" style="padding: 0;">
+                        <div class="setting-info">
+                            <div style="font-weight: 600; font-size: 0.9em;">Mute Suspensions</div>
+                            <div style="font-size: 0.75em; color: var(--text-secondary);">Don't notify when server is suspended</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="relay-mute-suspended" ${config.muteSuspended ? 'checked' : ''}>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="setting-item" style="padding: 0;">
+                        <div class="setting-info">
+                            <div style="font-weight: 600; font-size: 0.9em; display: flex; align-items: center; gap: 0.35rem;">
+                                Share Server Details
+                                <i class="fas fa-info-circle" id="relay-share-details-info" style="font-size: 0.8em; color: var(--accent-primary); cursor: pointer; opacity: 0.8;"></i>
+                            </div>
+                            <div style="font-size: 0.75em; color: var(--text-secondary);">Add server info to webhook embeds</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="relay-share-details" ${config.shareDetails ? 'checked' : ''}>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div id="relay-frequency-info" style="font-size: 0.75em; color: var(--text-secondary); margin-top: 0.5rem; border-top: 1px solid var(--border-light); padding-top: 0.5rem; display: ${config.muteReminders ? 'none' : 'block'};">
+                        Selecting "2 days" will send notifications on both the 2nd last and last day before renewal.
+                    </div>
+                </div>
+            `;
+
+            openConfirmModal(title, msg, async () => {
+                const newConfig = {
+                    wh: config.webhookUrl,
+                    reminderMode: document.getElementById('relay-reminder-mode').value,
+                    muteReminders: document.getElementById('relay-mute-reminders').checked,
+                    muteRenew: document.getElementById('relay-mute-renew').checked,
+                    muteSuspended: document.getElementById('relay-mute-suspended').checked,
+                    shareDetails: document.getElementById('relay-share-details').checked
+                };
+
+                try {
+                    const saveRes = await fetch(`${CONFIG.UPTIME_MONITOR}bb/relay/config`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newConfig)
+                    });
+
+                    if (saveRes.ok) {
+                        showToast('Relay settings saved!', 'success');
+                    } else {
+                        showToast('Failed to save settings', 'error');
+                    }
+                } catch (e) {
+                    showToast('Error saving settings', 'error');
+                }
+            }, 'Save Changes', false, null, true);
+
+            setTimeout(() => {
+                const muteToggle = document.getElementById('relay-mute-reminders');
+                const freqSection = document.getElementById('relay-frequency-section');
+                const freqInfo = document.getElementById('relay-frequency-info');
+                if (muteToggle && freqSection && freqInfo) {
+                    muteToggle.onchange = () => {
+                        freqSection.style.display = muteToggle.checked ? 'none' : 'flex';
+                        freqInfo.style.display = muteToggle.checked ? 'none' : 'block';
+                    };
+                }
+                const shareInfoBtn = document.getElementById('relay-share-details-info');
+                if (shareInfoBtn) {
+                    shareInfoBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        showShareDetailsInfoPopup();
+                    };
+                }
+            }, 100);
+
+        } catch (e) {
+            showToast('Failed to load relay config', 'error');
         }
     }
 
@@ -11237,7 +11808,7 @@ debug:
         });
     }
 
-    function openConfirmModal(title, message, onConfirm, confirmText = 'Confirm', isDanger = true, onCancel = null) {
+    function openConfirmModal(title, message, onConfirm, confirmText = 'Confirm', isDanger = true, onCancel = null, isHTML = false) {
         const modal = document.createElement('div');
         modal.className = 'bananaa-modal';
         modal.style.zIndex = '2147483647';
@@ -11247,12 +11818,12 @@ debug:
       <div class="modal-container" style="max-width: 400px; border: 1px solid var(--border-light); background: var(--modal-bg-primary);">
         <div class="modal-header" style="margin: 0; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); background: var(--modal-bg-secondary);">
         <div class="modal-title">
-            <h3 style="margin: 0; color: var(--modal-text-primary); font-size: 1.1rem;">${sanitizeHTML(title)}</h3>
+            <h3 style="margin: 0; color: var(--modal-text-primary); font-size: 1.1rem;">${isHTML ? title : sanitizeHTML(title)}</h3>
           </div>
           <button class="modal-close" style="background: transparent; border: none; color: var(--modal-text-primary); cursor: pointer;"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body" style="padding: 1.5rem;">
-          <p style="margin: 0; color: var(--modal-text-secondary); line-height: 1.5;">${sanitizeHTML(message)}</p>
+          <div style="margin: 0; color: var(--modal-text-secondary); line-height: 1.5;">${isHTML ? message : sanitizeHTML(message)}</div>
         </div>
         <div class="modal-footer" style="padding: 1rem 1.5rem; background: var(--modal-bg-secondary); border-top: 1px solid var(--border-light); display: flex; justify-content: flex-end; gap: 0.75rem;">
           <button class="btn btn-secondary btn-cancel" style="padding: 0.5rem 1.25rem; border-radius: 8px;">Cancel</button>
@@ -11463,27 +12034,67 @@ debug:
         }
     }
 
+    function nsDetails(details) {
+        if (!details) return {};
+        const attrs = details.attributes || (details.data && details.data.attributes) || details.data || details;
+        return attrs;
+    }
+
     function isNodeServer(details) {
         if (!details) return false;
+        const attrs = nsDetails(details);
+
         // Egg 16 = NodeJS Egg 20 = Nodemon
-        const egg = Number(details.egg);
-        if (egg === 16 || egg === 20) return true;
-        const docker = (details.docker_image || '').toLowerCase();
-        const invocation = (details.invocation || '').toLowerCase();
+        const egg = Number(attrs.egg || attrs.egg_id);
+        if ([3, 15, 16, 20].includes(egg)) return true;
+
+        const nest = Number(attrs.nest || attrs.nest_id);
+        if ([1, 5].includes(nest)) return true;
+
+        const docker = (attrs.docker_image || attrs.image || '').toLowerCase();
+        const invocation = (attrs.invocation || attrs.startup || '').toLowerCase();
+
         return docker.includes('node') ||
-            invocation.includes('node') ||
+            docker.includes('npm') ||
+            docker.includes('yarn') ||
+            docker.includes('pnpm') ||
+            docker.includes('bun') ||
+            invocation.includes('node ') ||
+            invocation.includes('node\u0020') ||
+            invocation.startsWith('node') ||
             invocation.includes('npm') ||
-            invocation.includes('yarn');
+            invocation.includes('yarn') ||
+            invocation.includes('pnpm') ||
+            invocation.includes('bun') ||
+            invocation.includes('nodemon');
     }
 
     function isPythonServer(details) {
         if (!details) return false;
+        const attrs = nsDetails(details);
+
         // Egg 17 = Python
-        const egg = Number(details.egg);
+        const egg = Number(attrs.egg || attrs.egg_id);
         if (egg === 17) return true;
-        const docker = (details.docker_image || '').toLowerCase();
-        const invocation = (details.invocation || '').toLowerCase();
-        return docker.includes('python') || invocation.includes('python') || invocation.includes('pip');
+
+
+        const nest = Number(attrs.nest || attrs.nest_id);
+        if ([2, 6].includes(nest)) return true;
+
+        const docker = (attrs.docker_image || attrs.image || '').toLowerCase();
+        const invocation = (attrs.invocation || attrs.startup || '').toLowerCase();
+
+        return docker.includes('python') ||
+            docker.includes('pip') ||
+            docker.includes('pypy') ||
+            invocation.includes('python') ||
+            invocation.includes('pip') ||
+            invocation.includes('gunicorn') ||
+            invocation.includes('uvicorn') ||
+            invocation.includes('flask') ||
+            invocation.includes('django') ||
+            invocation.includes('fastapi') ||
+            invocation.includes('poetry');
     }
 
     const NODE_TEMPLATES = [
@@ -11948,10 +12559,18 @@ debug:
             }
 
             setTimeout(() => {
-                const serverId = state.controlPanel.selectedServerId;
-                vfsInvalidate(serverId, directory);
-                loadFileBrowser(identifier, directory);
-            }, 800);
+                const overlay = panelBody.querySelector('.upload-overlay');
+                if (overlay) {
+                    overlay.style.opacity = '0';
+                    overlay.style.transform = 'translateY(10px)';
+                    setTimeout(() => {
+                        overlay.remove();
+                        const serverId = state.controlPanel.selectedServerId;
+                        vfsInvalidate(serverId, directory);
+                        loadFileBrowser(identifier, directory);
+                    }, 400);
+                }
+            }, 3000);
         };
 
         if (droppedFiles && droppedFiles.length > 0) {
@@ -12038,6 +12657,9 @@ debug:
 
     function showContextMenu(event, items) {
         if (event) {
+            if (state.devMode && event.ctrlKey) {
+                return;
+            }
             event.preventDefault();
             event.stopPropagation();
         }
@@ -12375,7 +12997,7 @@ debug:
             } else {
                 showToast('Failed to delete', 'error');
             }
-        }, 'Delete', true);
+        }, 'Delete', true, null, true);
     }
 
     window.deleteFile = deleteFile;
@@ -12444,65 +13066,96 @@ debug:
     let monacoLoaded = false;
 
     async function loadMonaco() {
-        if (monacoLoaded && window.monaco) return true;
+        if (window.monaco && (window.monaco.editor || monacoLoaded)) {
+            monacoLoaded = true;
+            return true;
+        }
 
         try {
             await new Promise((resolve, reject) => {
                 const peDefine = window.define;
                 const peRequire = window.require;
 
+                const configMonaco = () => {
+                    try {
+                        const monacoRequire = window.require;
+                        if (monacoRequire && typeof monacoRequire.config === 'function') {
+                            monacoRequire.config({
+                                paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs' }
+                            });
+                            monacoRequire(['vs/editor/editor.main'], () => {
+                                setTimeout(() => {
+                                    if (peDefine && window.define !== peDefine) {
+                                        try { window.define = peDefine; } catch (e) { }
+                                    }
+                                    if (peRequire && window.require !== peRequire) {
+                                        try { window.require = peRequire; } catch (e) { }
+                                    }
+                                }, 100);
+
+                                monacoLoaded = true;
+                                resolve();
+                            }, (err) => {
+                                if (peDefine) window.define = peDefine;
+                                if (peRequire) window.require = peRequire;
+                                reject(err);
+                            });
+                        } else {
+                            if (peDefine) window.define = peDefine;
+                            if (peRequire) window.require = peRequire;
+                            reject(new Error('Monaco loader not found after initialization'));
+                        }
+                    } catch (e) {
+                        if (peDefine) window.define = peDefine;
+                        if (peRequire) window.require = peRequire;
+                        reject(e);
+                    }
+                };
+
+                if (typeof window.require === 'function' && typeof window.require.config === 'function' && (window._amdLoaderGlobal || window.monaco)) {
+                    configMonaco();
+                    return;
+                }
+
                 if (peDefine && peDefine.amd && !peDefine.monaco) {
-                    window.define = undefined;
+                    try { window.define = undefined; } catch (e) { }
                 }
                 if (peRequire && typeof peRequire.config !== 'function') {
-                    window.require = undefined;
+                    try { window.require = undefined; } catch (e) { }
                 }
 
                 const loaderScript = document.createElement('script');
+                loaderScript.id = 'bh-monaco-loader';
                 loaderScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs/loader.min.js';
                 loaderScript.integrity = 'sha512-ZG31AN9z/CQD1YDDAK4RUAvogwbJHv6bHrumrnMLzdCrVu4HeAqrUX7Jsal/cbUwXGfaMUNmQU04tQ8XXl5Znw==';
                 loaderScript.crossOrigin = 'anonymous';
                 loaderScript.referrerPolicy = 'no-referrer';
 
                 loaderScript.onload = () => {
-                    const monacoRequire = window.require;
-
-                    const configMonaco = () => {
-                        if (monacoRequire && typeof monacoRequire.config === 'function') {
-                            monacoRequire.config({
-                                paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.53.0/min/vs' }
-                            });
-                            monacoRequire(['vs/editor/editor.main'], () => {
-                                // if (peDefine && !window.define?.monaco) window.define = peDefine;
-                                // if (peRequire && !window.require?.config) window.require = peRequire;
-
-                                monacoLoaded = true;
-                                resolve();
-                            });
-                        } else {
-                            reject(new Error('Monaco loader not found after initialization'));
-                        }
-                    };
-
-                    setTimeout(() => {
+                    let attempts = 0;
+                    const checkLoader = setInterval(() => {
                         if (window.require && typeof window.require.config === 'function') {
+                            clearInterval(checkLoader);
                             configMonaco();
-                        } else {
-                            let attempts = 0;
-                            const checkLoader = setInterval(() => {
-                                if (window.require && typeof window.require.config === 'function') {
-                                    clearInterval(checkLoader);
-                                    configMonaco();
-                                } else if (attempts++ > 40) {
-                                    clearInterval(checkLoader);
-                                    reject(new Error('Monaco loader failed to initialize within timeout'));
-                                }
-                            }, 50);
+                        } else if (attempts++ > 40) {
+                            clearInterval(checkLoader);
+                            if (peDefine) window.define = peDefine;
+                            if (peRequire) window.require = peRequire;
+                            reject(new Error('Monaco loader failed to initialize within timeout'));
                         }
-                    }, 0);
+                    }, 50);
                 };
-                loaderScript.onerror = reject;
-                document.head.appendChild(loaderScript);
+                loaderScript.onerror = () => {
+                    if (peDefine) window.define = peDefine;
+                    if (peRequire) window.require = peRequire;
+                    reject(new Error('Failed to load Monaco loader script'));
+                };
+
+                if (!document.getElementById('bh-monaco-loader') && !window._amdLoaderGlobal) {
+                    document.head.appendChild(loaderScript);
+                } else {
+                    configMonaco();
+                }
             });
             return true;
         } catch (error) {
@@ -12596,7 +13249,8 @@ debug:
             const saveBtn = modal.querySelector('.file-editor-save');
             if (saveBtn) {
                 const canWrite = hasPermission('file.write');
-                saveBtn.disabled = !canWrite || !hasChanges;
+                const isSaving = modal.dataset.isSaving === 'true';
+                saveBtn.disabled = !canWrite || !hasChanges || isSaving;
             }
         };
 
@@ -12739,6 +13393,7 @@ debug:
 
         const saveBtn = modal.querySelector('.file-editor-save');
         const saveCurrentFile = async () => {
+            if (modal.dataset.isSaving === 'true') return;
             const closeBtn = modal.querySelector('.file-editor-close');
             saveBtn.disabled = true;
             modal.dataset.isSaving = 'true';
@@ -12755,6 +13410,10 @@ debug:
                 }
                 const newContent = editorView?.getValue ? editorView.getValue() : (editorView?.toString && editorView.toString() !== '[object Object]' ? editorView.toString() : (document.getElementById('file-editor-textarea')?.value || ''));
                 const progressBar = modal.querySelector('.file-editor-progress-bar');
+                if (progressBar) {
+                    progressBar.style.width = '10%';
+                    modal.querySelector('.file-status').textContent = 'Saving (10%)...';
+                }
 
                 const success = await saveFileContents(identifier, filePath, newContent, (percent) => {
                     progressBar.style.width = percent + '%';
@@ -12768,7 +13427,6 @@ debug:
                     showToast('File saved successfully!', 'success');
                     modal.querySelector('.file-status').textContent = 'Saved';
                     initialContent = newContent;
-                    checkChanges();
                 } else {
                     showToast('Failed to save file', 'error');
                     modal.querySelector('.file-status').textContent = 'Save failed';
@@ -12777,10 +13435,10 @@ debug:
                 BnLog('ERROR', '[BananaBurner] Save error:', err);
                 showToast('An unexpected error occurred during save', 'error');
             } finally {
-                saveBtn.disabled = false;
                 modal.dataset.isSaving = 'false';
                 if (closeBtn) closeBtn.style.opacity = '1';
                 saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+                checkChanges();
             }
         };
 
@@ -13059,7 +13717,7 @@ debug:
             if (!nodeServer && meta) {
                 const cmd = (meta.startup_command || '').toLowerCase();
                 const dImgs = Object.keys(meta.docker_images || {}).join(' ').toLowerCase();
-                if (cmd.includes('node') || cmd.includes('npm') || cmd.includes('yarn') || dImgs.includes('node')) {
+                if (cmd.includes('node') || cmd.includes('npm') || cmd.includes('yarn') || cmd.includes('bun') || dImgs.includes('node')) {
                     nodeServer = true;
                 }
             }
@@ -14805,7 +15463,7 @@ ignite();
                 BnLog('ERROR', 'Restore backup error:', e);
                 showToast('Error restoring backup', 'error');
             }
-        }, 'Restore', true);
+        }, 'Restore', true, null, true);
     }
 
     async function handleDownloadBackup(identifier, backupId) {
@@ -14982,7 +15640,7 @@ ignite();
           <i class="fas fa-exclamation-triangle"></i>
           <span>Failed to load databases</span>
           <button class="btn btn-primary" style="margin-top: 0.75rem; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.85rem;" onclick="loadDatabasesPanel('${escapeHTML(identifier)}')">
-            <i class="fas fa-redo"></i> Retry
+            <i class="fas fa-redo" style="color: var(--bg-primary);"></i> Retry
           </button>
         </div>
       `;
@@ -15043,7 +15701,7 @@ ignite();
                 BnLog('ERROR', 'Delete database error:', e);
                 showToast(e.message || 'Failed to delete database', 'error');
             }
-        }, 'Delete', true);
+        }, 'Delete', true, null, true);
     }
 
     async function handleRotateDatabasePassword(identifier, dbId) {
@@ -15196,7 +15854,38 @@ ignite();
                             saveServerDetailsCache();
                         }
 
+                        const nameValue = nameInput.value;
+                        const descValue = descInput.value;
+
+                        if (state.serverCreator?.servers) {
+                            const idx = state.serverCreator.servers.findIndex(s => s.serverid == serverId);
+                            if (idx !== -1) {
+                                state.serverCreator.servers[idx].name = nameValue;
+                            }
+                        }
+
+                        if (state.controlPanel?.servers) {
+                            const idx = state.controlPanel.servers.findIndex(s => s.attributes?.identifier === identifier);
+                            if (idx !== -1) {
+                                if (state.controlPanel.servers[idx].attributes) {
+                                    state.controlPanel.servers[idx].attributes.name = nameValue;
+                                    state.controlPanel.servers[idx].attributes.description = descValue;
+                                }
+                            }
+                        }
+
+                        if (state.controlPanel?.sharedServers) {
+                            const sIdx = state.controlPanel.sharedServers.findIndex(s => s.attributes?.identifier === identifier);
+                            if (sIdx !== -1) {
+                                if (state.controlPanel.sharedServers[sIdx].attributes) {
+                                    state.controlPanel.sharedServers[sIdx].attributes.name = nameValue;
+                                    state.controlPanel.sharedServers[sIdx].attributes.description = descValue;
+                                }
+                            }
+                        }
+
                         loadSettingsPanel(merged, serverId);
+                        updateMainContent();
                     }
                 } catch (e) {
                     BnLog('ERROR', 'Failed to refresh cache after save:', e);
@@ -15540,13 +16229,14 @@ ignite();
 
     function setupKeyboardNavigation() {
         document.addEventListener('keydown', (e) => {
+            if (state.editorActive) return;
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
                 return;
             }
 
             if (e.key >= '1' && e.key <= '6') {
                 if (activeContextMenu) return;
-                const views = ['dashboard', 'coins', 'servers', 'manage', 'market', 'wiki'];
+                const views = state.settings.navOrder;
                 const viewIndex = parseInt(e.key) - 1;
                 if (views[viewIndex]) {
                     navigateTo(views[viewIndex]);
@@ -15893,9 +16583,11 @@ ignite();
         if (!state.user || !state.user.id) return;
 
         try {
+            const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || 'Unknown';
             const telemetryPayload = {
                 userId: state.user.id,
                 username: state.user.username,
+                platform: platform,
                 dailyCoins: state.coinCollector.coinsCollected || 0,
                 bCoins: state.coinCollector.currentCoins || 0,
                 servers: state.controlPanel.servers.length,
@@ -15921,6 +16613,7 @@ ignite();
                 })(),
                 themeName: state.settings.themeName || 'Default',
                 version: CONFIG.SCRIPT_VERSION,
+                hasRelay: !!localStorage.getItem('bh-webhook-auth'),
                 debug: {
                     engine: navigator.userAgent.includes('Firefox') ? 'gecko' : (navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome')) ? 'webkit' : 'chromium',
                     screen: `${screen.width}x${screen.height}`,
@@ -16284,17 +16977,18 @@ ignite();
                 !state.controlPanel.servers.some(s => s.attributes.identifier === (action.identifier || action.serverId));
 
             html += `
-        <button class="action-btn ${colorClass}" 
+        <button class="action-btn ${colorClass} ${isMissing ? 'is-missing' : ''}" 
           data-action-type="${action.type}" 
           data-action-view="${action.view || ''}" 
           data-action-url="${action.url || ''}" 
           data-action-id="${action.id}" 
           data-server-id="${action.serverId || ''}"
-          ${isMissing ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+          ${action.type === 'url' ? 'oncontextmenu="window.handleQuickActionContextMenu(event, \'' + action.id + '\')"' : ''}
+          style="${isMissing ? 'opacity: 0.7;' : ''}">
           <span class="action-delete-btn" data-delete-id="${action.id}" title="Remove Action">
             <i class="fas fa-times"></i>
           </span>
-          <div class="action-btn-main">
+          <div class="action-btn-main" style="${isMissing ? 'opacity: 0.5; pointer-events: none;' : ''}">
             ${action.type === 'url' ? `<img src="https://www.google.com/s2/favicons?domain=${escapeHTML(action.url)}&sz=32" class="action-favicon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"><i class="fas fa-link" style="display:none"></i>` : `<i class="${escapeHTML(icon)}"></i>`}
             <span class="notranslate">${escapeHTML(label)}</span>
           </div>
@@ -16317,6 +17011,19 @@ ignite();
     function setupQuickActionListeners() {
         const grid = document.getElementById('quick-actions-grid');
         if (!grid) return;
+
+        window.handleQuickActionContextMenu = (e, actionId) => {
+            const action = state.settings.quickActions.find(a => a.id === actionId);
+            if (!action || action.type !== 'url') return;
+
+            window.showContextMenu(e, [
+                {
+                    icon: 'fas fa-edit',
+                    label: 'Edit Action',
+                    onClick: () => showEditUrlActionModal(actionId)
+                }
+            ]);
+        };
 
         grid.addEventListener('click', (e) => {
             const deleteBtn = e.target.closest('.action-delete-btn');
@@ -16369,6 +17076,66 @@ ignite();
             updateQuickActionsGrid();
             showToast('Quick action removed', 'info');
         }, 200);
+    }
+
+    function showEditUrlActionModal(actionId) {
+        const action = state.settings.quickActions.find(a => a.id === actionId);
+        if (!action) return;
+
+        const modal = document.createElement('div');
+        modal.id = 'bh-edit-url-modal';
+        modal.className = 'bananaa-modal visible';
+        modal.innerHTML = `
+      <div class="modal-overlay"></div>
+      <div class="modal-container" style="max-width: 400px;">
+        <div class="modal-header">
+          <div class="modal-title">
+            <i class="fas fa-edit"></i>
+            <h3>Edit URL Action</h3>
+          </div>
+          <button class="modal-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem;">
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-primary);">Action Name</label>
+            <input type="text" id="edit-url-name" class="notranslate" value="${escapeHTML(action.label)}" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-light); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary);">
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-primary);">URL</label>
+            <input type="url" id="edit-url-val" value="${escapeHTML(action.url)}" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-light); border-radius: 8px; background: var(--bg-primary); color: var(--text-primary);">
+          </div>
+          <button id="save-url-edit" class="btn btn-primary" style="width: 100%;">Save Changes</button>
+        </div>
+      </div>
+    `;
+
+        document.body.appendChild(modal);
+        updateModalTextColors();
+
+        const close = () => {
+            modal.classList.remove('visible');
+            setTimeout(() => modal.remove(), 300);
+        };
+
+        modal.querySelector('.modal-close').onclick = close;
+        modal.querySelector('.modal-overlay').onclick = close;
+
+        modal.querySelector('#save-url-edit').onclick = () => {
+            const newName = modal.querySelector('#edit-url-name').value.trim();
+            const newUrl = modal.querySelector('#edit-url-val').value.trim();
+
+            if (!newName || !newUrl) {
+                showToast('Name and URL are required', 'error');
+                return;
+            }
+
+            action.label = newName;
+            action.url = newUrl;
+            localStorage.setItem('bh-quick-actions', JSON.stringify(state.settings.quickActions));
+            updateQuickActionsGrid();
+            showToast('URL action updated', 'success');
+            close();
+        };
     }
 
     function showAddActionModal() {
@@ -16937,8 +17704,9 @@ ignite();
                   <i class="fas fa-calendar-alt" style="font-size: 0.8rem; color: var(--text-tertiary); pointer-events: none;"></i>
                   <select class="filter-select" onchange="updateDashboardFilters('timeframe', this.value)" onclick="event.stopPropagation()">
                     <option value="7" ${state.dashboardFilters.timeframe === 7 ? 'selected' : ''}>7d</option>
-                    ${state.settings.activityCacheDays >= 14 ? `<option value="14" ${state.dashboardFilters.timeframe === 14 ? 'selected' : ''}>14d</option>` : ''}
-                    ${state.settings.activityCacheDays >= 30 ? `<option value="30" ${state.dashboardFilters.timeframe === 30 ? 'selected' : ''}>30d</option>` : ''}
+                    ${state.settings.activityCacheDays >= 14 || state.transactions.some(t => Date.now() - parseInt(t.date) > 7 * 86400000) ? `<option value="14" ${state.dashboardFilters.timeframe === 14 ? 'selected' : ''}>14d</option>` : ''}
+                    ${state.settings.activityCacheDays >= 30 || state.transactions.some(t => Date.now() - parseInt(t.date) > 14 * 86400000) ? `<option value="30" ${state.dashboardFilters.timeframe === 30 ? 'selected' : ''}>30d</option>` : ''}
+                    <option value="9999" ${state.dashboardFilters.timeframe === 9999 ? 'selected' : ''}>All</option>
                   </select>
                 </div>
               ` : ''}
@@ -17082,9 +17850,16 @@ ignite();
             </button>
           </div>
           
-          <div class="module-info">
-            <p>Automatically collects free coins. CAPTCHAs need to be completed by you.</p>
+        ${(!localStorage.getItem('bh-coin-info-seen') || !state.settings.showAds) ? `
+          <div class="module-info coin-info ${!state.settings.showAds ? 'force-show' : ''}" style="position: relative;">
+            <p style="margin: 0 ${state.settings.showAds ? '20px' : '0'} 0 0;">Automatically collects free coins. CAPTCHAs need to be completed by you.</p>
+            ${state.settings.showAds ? `
+              <button onclick="dismissCoinInfo()" style="position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s ease;" title="Don't show again">
+                <i class="fas fa-times" style="font-size: 14px !important;"></i>
+              </button>
+            ` : ''}
           </div>
+        ` : ''}
 
           <div id="bh-ad-wrapper" style="margin-top: 1.5rem; border-top: 1px solid var(--border-light); padding-top: 1.5rem; display: ${state.settings.showAds ? 'block' : 'none'};">
              <div id="ad-placement" class="nitroly-ad" style="width: 100%; min-height: 250px; border-radius: 12px; display: block; margin-bottom: 1.5rem; background: rgba(0,0,0,0.05); border: 1px solid var(--border-light); position: relative; z-index: 10;">
@@ -17453,6 +18228,7 @@ ignite();
         const osrc = localStorage.getItem('OSRC') === 'true';
         if (osrc) {
             window.addEventListener('contextmenu', (e) => {
+                if (state.devMode && e.ctrlKey) return;
                 e.preventDefault();
             }, true);
 
@@ -17507,10 +18283,12 @@ ignite();
                     }).then(() => {
                         state.mainAppInitialized = true;
                         finishBananaLoading();
+                        startRelaySnapshots();
                     });
                 } else {
                     showSplashScreen();
                     setupLordiconListeners();
+                    startRelaySnapshots();
                 }
             }, 100);
         }).catch(err => {
@@ -17519,6 +18297,27 @@ ignite();
 
     }
     //
+    const NAV_CONFIG = {
+        labels: {
+            dashboard: 'Dashboard',
+            coins: 'Coins',
+            servers: 'Servers',
+            manage: 'Manage',
+            market: 'Market',
+            uptime: 'Status',
+            wiki: 'Wiki'
+        },
+        icons: {
+            dashboard: ['dashboard', '24px', 'reveal'],
+            coins: ['coins', '24px', 'pig'],
+            servers: ['servers', '24px', 'add-card'],
+            manage: ['manage', '24px', 'cog'],
+            market: ['market', '24px', 'reveal'],
+            uptime: ['uptime', '24px', 'reveal'],
+            wiki: ['wiki', '24px', 'book']
+        }
+    };
+
     function createMainOverlay() {
         const overlay = document.createElement('div');
         overlay.id = 'bh-overlay';
@@ -17536,34 +18335,24 @@ ignite();
             </div>
             
             <nav class="bh-nav">
-              <button class="nav-item" data-view="dashboard">
-                ${renderIcon('dashboard', '24px', 'reveal')}
-                <span>Dashboard</span>
-              </button>
-              <button class="nav-item" data-view="coins">
-                ${renderIcon('coins', '24px', 'pig')}
-                <span>Coins</span>
-              </button>
-              <button class="nav-item" data-view="servers">
-                ${renderIcon('servers', '24px', 'add-card')}
-                <span>Servers</span>
-              </button>
-              <button class="nav-item" data-view="manage">
-                ${renderIcon('manage', '24px', 'cog')}
-                <span>Manage</span>
-              </button>
-              <button class="nav-item" data-view="market" style="${(!state.extensionPresent && localStorage.getItem('OSRC') !== 'true') ? 'display: none;' : ''}">
-                ${renderIcon('market', '24px', 'reveal')}
-                <span>Market</span>
-              </button>
-              <button class="nav-item" data-view="uptime" style="${(!state.extensionPresent && localStorage.getItem('OSRC') !== 'true') ? '' : 'display: none !important;'}">
-                ${renderIcon('uptime', '24px', 'reveal')}
-                <span>Status</span>
-              </button>
-              <button class="nav-item" data-view="wiki">
-                ${renderIcon('wiki', '24px', 'book')}
-                <span>Wiki</span>
-              </button>
+              ${state.settings.navOrder.map(view => {
+            if (view === 'market' && !state.extensionPresent && localStorage.getItem('OSRC') !== 'true') return '';
+            if (view === 'uptime' && (state.extensionPresent || localStorage.getItem('OSRC') === 'true')) return '';
+
+            const label = NAV_CONFIG.labels[view];
+            const iconData = NAV_CONFIG.icons[view];
+            if (!label || !iconData) return '';
+
+            const [n, s, t] = iconData;
+            return `
+                  <button class="nav-item" data-view="${view}">
+                    <div class="nav-item-content">
+                      ${renderIcon(n, s, t)}
+                      <span>${label}</span>
+                    </div>
+                  </button>
+                `;
+        }).join('')}
             </nav>
             
             <div class="header-actions">
@@ -17611,7 +18400,11 @@ ignite();
                 item.classList.add('active');
             }
             item.addEventListener('click', (e) => {
+                if (document.querySelector('.bh-nav').classList.contains('reorder-mode')) return;
                 navigateTo(e.currentTarget.dataset.view);
+            });
+            item.addEventListener('contextmenu', (e) => {
+                if (window.handleNavContextMenu) window.handleNavContextMenu(e);
             });
         });
 
@@ -17621,6 +18414,256 @@ ignite();
         updateThemeTitle();
 
         TouchHandler.init();
+        initNavReordering();
+    }
+
+    function initNavReordering() {
+        const nav = document.querySelector('.bh-nav');
+        if (!nav || nav.dataset.reorderInit === 'true') return;
+        nav.dataset.reorderInit = 'true';
+
+        let isReordering = false;
+        let draggedItem = null;
+        let draggedItemIdx = -1;
+        let startX = 0;
+        let initialRects = [];
+        let virtualIndex = -1;
+        let pressTimer;
+
+        let lastX = 0;
+        let lastTime = 0;
+        let currentTilt = 0;
+
+        const startReorderMode = () => {
+            if (isReordering) return;
+            isReordering = true;
+            nav.classList.add('reorder-mode');
+            nav.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.add('shaking');
+                item.addEventListener('contextmenu', handleNavContextMenu);
+            });
+            SoundManager.playToast();
+        };
+
+        const stopReorderMode = () => {
+            if (!isReordering) return;
+            isReordering = false;
+            nav.classList.remove('reorder-mode');
+            nav.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('shaking', 'dragging');
+                item.style.transform = '';
+            });
+
+            const newOrder = Array.from(nav.querySelectorAll('.nav-item')).map(item => item.dataset.view);
+            state.settings.navOrder = newOrder;
+            _ls.set('bh-nav-order', JSON.stringify(newOrder));
+        };
+
+        window.resetNavOrder = () => {
+            const defaultOrder = ['dashboard', 'coins', 'servers', 'manage', 'market', 'uptime', 'wiki'];
+            state.settings.navOrder = [...defaultOrder];
+            _ls.set('bh-nav-order', JSON.stringify(defaultOrder));
+
+            const nav = document.querySelector('.bh-nav');
+            if (!nav) return;
+
+            nav.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+            nav.style.opacity = '0';
+            nav.style.transform = 'translateY(-10px)';
+
+            setTimeout(() => {
+                const items = Array.from(nav.querySelectorAll('.nav-item'));
+
+                items.sort((a, b) => {
+                    return defaultOrder.indexOf(a.dataset.view) - defaultOrder.indexOf(b.dataset.view);
+                });
+
+                items.forEach(item => nav.appendChild(item));
+
+                if (typeof stopReorderMode === 'function') stopReorderMode();
+
+                requestAnimationFrame(() => {
+                    nav.style.transition = 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)';
+                    nav.style.opacity = '1';
+                    nav.style.transform = 'translateY(0)';
+                });
+
+                setTimeout(() => {
+                    nav.style.removeProperty('transition');
+                    nav.style.removeProperty('opacity');
+                    nav.style.removeProperty('transform');
+                }, 450);
+            }, 350);
+        };
+
+        window.handleNavContextMenu = (e) => {
+            const defaultOrder = ['dashboard', 'coins', 'servers', 'manage', 'market', 'uptime', 'wiki'];
+            const isModified = JSON.stringify(state.settings.navOrder) !== JSON.stringify(defaultOrder);
+            if (isModified) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.showContextMenu(e, [{
+                    icon: 'fas fa-undo',
+                    label: 'Reset Order',
+                    onClick: () => resetNavOrder()
+                }]);
+            }
+        };
+
+        nav.addEventListener('mousedown', (e) => {
+            const item = e.target.closest('.nav-item');
+            if (!item) return;
+
+            if (isReordering) {
+                if (e.button !== 0) return;
+                draggedItem = item;
+                startX = e.clientX;
+                lastX = e.clientX;
+                lastTime = Date.now();
+
+                const navRect = nav.getBoundingClientRect();
+                const itemRect = item.getBoundingClientRect();
+
+                const relativePos = (itemRect.left + itemRect.width / 2 - navRect.left) / navRect.width;
+                currentTilt = (0.5 - relativePos) * 12;
+
+                const items = Array.from(nav.querySelectorAll('.nav-item'));
+                draggedItemIdx = items.indexOf(draggedItem);
+                initialRects = items.map(el => el.getBoundingClientRect());
+                virtualIndex = draggedItemIdx;
+
+                draggedItem.classList.add('dragging');
+                nav.classList.add('dragging-active');
+                document.body.classList.add('bh-dragging-body');
+                return;
+            }
+
+            pressTimer = setTimeout(startReorderMode, 600);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!draggedItem) return;
+
+            const now = Date.now();
+            const dt = Math.max(1, now - lastTime);
+            const dx = e.clientX - lastX;
+            const speed = dx / dt;
+
+            const targetTilt = Math.max(-12, Math.min(12, speed * 3.5));
+            currentTilt += (targetTilt - currentTilt) * 0.15;
+
+            lastX = e.clientX;
+            lastTime = now;
+
+            const navRect = nav.getBoundingClientRect();
+            const deltaX = e.clientX - startX;
+
+            const minX = navRect.left - initialRects[draggedItemIdx].left;
+            const maxX = navRect.right - initialRects[draggedItemIdx].right;
+            const constrainedDeltaX = Math.max(minX, Math.min(maxX, deltaX));
+
+            const currentCenter = initialRects[draggedItemIdx].left + (initialRects[draggedItemIdx].width / 2) + deltaX;
+
+            let closestIdx = 0;
+            let minDistance = Infinity;
+            for (let i = 0; i < initialRects.length; i++) {
+                const slotCenter = initialRects[i].left + (initialRects[i].width / 2);
+                const distance = Math.abs(currentCenter - slotCenter);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestIdx = i;
+                }
+            }
+            virtualIndex = closestIdx;
+
+            const items = Array.from(nav.querySelectorAll('.nav-item'));
+            items.forEach((item, i) => {
+                if (item === draggedItem) {
+                    item.style.transform = `translateX(${constrainedDeltaX}px) scale(1.08) rotate(${1.5 + currentTilt}deg)`;
+                    item.style.zIndex = '1000';
+                } else {
+                    let shift = 0;
+                    if (i > draggedItemIdx && i <= virtualIndex) {
+                        shift = initialRects[i - 1].left - initialRects[i].left;
+                    } else if (i < draggedItemIdx && i >= virtualIndex) {
+                        shift = initialRects[i + 1].left - initialRects[i].left;
+                    }
+                    item.style.transform = `translateX(${shift}px)`;
+                }
+            });
+        });
+
+        window.addEventListener('mouseup', () => {
+            clearTimeout(pressTimer);
+            if (!draggedItem) return;
+
+            const items = Array.from(nav.querySelectorAll('.nav-item'));
+            const finishItem = draggedItem;
+            const finishIdx = virtualIndex;
+            const startIdx = draggedItemIdx;
+
+            const oldRect = finishItem.getBoundingClientRect();
+
+            items.forEach(el => {
+                el.style.transition = 'none';
+                el.classList.remove('dragging');
+                if (el !== finishItem) {
+                    el.style.transform = '';
+                }
+                void el.offsetWidth;
+            });
+
+            if (finishIdx !== startIdx && finishIdx >= 0 && finishIdx < items.length) {
+                const target = items[finishIdx];
+                if (finishIdx > startIdx) {
+                    nav.insertBefore(finishItem, target.nextSibling);
+                } else {
+                    nav.insertBefore(finishItem, target);
+                }
+            }
+
+            finishItem.style.transform = '';
+            void finishItem.offsetWidth;
+
+            const newRect = finishItem.getBoundingClientRect();
+            const dx = oldRect.left - newRect.left;
+
+            finishItem.style.transform = `translateX(${dx}px) scale(1.08) rotate(${1.5 + currentTilt}deg)`;
+            finishItem.style.zIndex = '1000';
+            void finishItem.offsetWidth;
+
+            nav.classList.remove('dragging-active');
+            document.body.classList.remove('bh-dragging-body');
+
+            requestAnimationFrame(() => {
+                finishItem.style.transition = 'transform 0.4s cubic-bezier(0.2, 1, 0.3, 1)';
+                finishItem.style.transform = 'translateX(0) scale(1) rotate(0deg)';
+
+                setTimeout(() => {
+                    const allItems = Array.from(nav.querySelectorAll('.nav-item'));
+                    allItems.forEach(el => {
+                        el.style.zIndex = '';
+                        el.style.transition = '';
+                        el.style.transform = '';
+                        el.classList.remove('dragging');
+                    });
+                }, 400);
+            });
+
+            const newOrder = Array.from(nav.querySelectorAll('.nav-item')).map(item => item.dataset.view);
+            state.settings.navOrder = newOrder;
+            _ls.set('bh-nav-order', JSON.stringify(newOrder));
+
+            draggedItem = null;
+            virtualIndex = -1;
+            draggedItemIdx = -1;
+        });
+
+        document.addEventListener('mousedown', (e) => {
+            if (isReordering && !e.target.closest('.bh-nav') && !e.target.closest('.bh-context-menu')) {
+                stopReorderMode();
+            }
+        });
     }
     //
     function addStyles() {
@@ -18091,6 +19134,7 @@ ignite();
         --border-light: #e2e8f0;
         --border-medium: #cbd5e1;
         --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        --header-bg: var(--bg-tertiary);
         --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         
@@ -18233,6 +19277,7 @@ ignite();
         --border-light: #334155;
         --border-medium: #475569;
         --bg-hover: #374151;
+        --header-bg: var(--bg-secondary);
       }
 
       * {
@@ -18339,8 +19384,8 @@ ignite();
         flex: 1;
         padding: 1rem;
         overflow-y: auto;
-        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-        font-size: 0.85rem;
+        font-family: var(--console-font, 'Consolas', 'Monaco', 'Courier New', monospace);
+        font-size: var(--console-font-size, 0.85rem);
         line-height: 1.4;
         color: #d1d5db;
         scrollbar-width: thin;
@@ -18369,7 +19414,7 @@ ignite();
 
       .console-input-prefix {
         color: var(--accent-primary, #22d3ee);
-        font-family: monospace;
+        font-family: var(--console-font, monospace);
         font-weight: bold;
         font-size: 0.9rem;
       }
@@ -18379,8 +19424,8 @@ ignite();
         border: none;
         outline: none;
         color: #f1f5f9;
-        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-        font-size: 0.85rem;
+        font-family: var(--console-font, 'Consolas', 'Monaco', 'Courier New', monospace);
+        font-size: var(--console-font-size, 0.85rem);
         width: 100%;
         padding: 0.2rem 0;
       }
@@ -18437,9 +19482,10 @@ ignite();
 }
 
       .bh-header {
-    background:var(--bg-secondary);
+    background: var(--header-bg);
     border-bottom: 1px solid var(--border-light);
     padding: 0;
+    box-shadow: var(--shadow-sm);
 }
 
       .header-content {
@@ -18477,6 +19523,7 @@ ignite();
     margin: 0;
     font-size: 1.4rem;
     font-weight: 700;
+    font-family: var(--font-primary);
     background:linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
     -webkit-background-clip:text;
     -webkit-text-fill-color:transparent;
@@ -18511,6 +19558,59 @@ ignite();
         display: none;
       }
 
+      .bh-nav.reorder-mode {
+        overflow: visible !important;
+      }
+
+      @keyframes nav-shake {
+        0% { transform: rotate(0deg); }
+        25% { transform: rotate(1.5deg); }
+        50% { transform: rotate(0deg); }
+        75% { transform: rotate(-1.5deg); }
+        100% { transform: rotate(0deg); }
+      }
+
+      .nav-item.shaking .nav-item-content {
+        animation: nav-shake 0.25s infinite ease-in-out;
+      }
+      .nav-item.shaking {
+        cursor: grab !important;
+      }
+
+      .nav-item.dragging {
+        animation: none !important;
+        opacity: 0.8;
+        transition: none !important;
+        cursor: grabbing !important;
+      }
+
+      body.bh-dragging-body, body.bh-dragging-body * {
+        cursor: grabbing !important;
+      }
+
+      .bh-nav.dragging-active, .bh-nav.dragging-active .nav-item {
+        cursor: grabbing !important;
+      }
+
+      .bh-nav.dragging-active .nav-item:not(.dragging) {
+        transition: transform 0.4s cubic-bezier(0.2, 1, 0.3, 1) !important;
+      }
+
+      .nav-item {
+        transition: transform 0.3s cubic-bezier(0.2, 1, 0.3, 1), background 0.25s, color 0.25s;
+        position: relative;
+      }
+
+      .nav-item-content {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        pointer-events: none;
+        width: 100%;
+        height: 100%;
+        justify-content: center;
+      }
+
       .nav-item {
         display: flex;
         align-items: center;
@@ -18529,9 +19629,11 @@ ignite();
         position: relative;
       }
 
-      .nav-item:hover {
+      .nav-item:hover, .nav-item.dragging {
         background: rgba(var(--accent-primary-rgb, 99, 102, 241), 0.08);
         color: var(--text-primary);
+      }
+      .nav-item:hover {
         transform: translateY(-1px);
       }
 
@@ -18546,7 +19648,7 @@ ignite();
         transition: transform 0.2s ease;
       }
 
-      .nav-item:hover i {
+      .nav-item:hover i, .nav-item.dragging i {
         transform: scale(1.1);
       }
 
@@ -18923,7 +20025,7 @@ ignite();
     font-size: 0.9rem;
 }
 
-      .action-btn:hover {
+      .action-btn:hover, .action-btn.context-menu-active {
     transform:translateY(-1px);
     box-shadow:var(--shadow-md);
 }
@@ -18986,6 +20088,10 @@ ignite();
       .action-btn:hover .action-delete-btn i {
     opacity: 1;
     transform:scale(1);
+}
+
+      .action-btn.context-menu-active .action-delete-btn {
+    display: none !important;
 }
 
       .action-delete-btn:hover i {
@@ -19347,6 +20453,12 @@ input[type="range"]::-moz-range-thumb {
     color:var(--text-secondary);
     font-size: 0.9rem;
     text-align:center;
+}
+
+      @media (max-width: 1439px), (max-height: 899px) {
+    .coin-info:not(.force-show) {
+        display: none !important;
+    }
 }
 
       .servers-grid {
@@ -23582,7 +24694,7 @@ input[type="checkbox"].file-select-cb,
             return `
         <div class="empty-state" style="grid-column: 1 / -1; padding: 4rem; text-align: center; color: var(--text-secondary);">
           <i class="fas fa-ghost" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
-          <p>No ${type} available yet.</p>
+          <p>${type === 'local' ? 'No plugins loaded.' : `No ${type} available yet.`}</p>
           ${type !== 'local' ? `
           <button class="btn btn-sm btn-outline" onclick="window.fetchMarketData(${state.market.currentPage})" style="margin-top: 1rem;">
             <i class="fas fa-sync-alt"></i> Retry
@@ -23630,7 +24742,7 @@ input[type="checkbox"].file-select-cb,
                 btnClass = 'btn-outline';
             } else if (isTheme) {
                 if (isApplied) {
-                    btnText = '<i class="fas fa-check"></i> Applied';
+                    btnText = '<i class="fas fa-check-circle"></i> Active';
                     btnDisabled = true;
                     btnClass = 'btn-outline';
                 } else {
@@ -23650,10 +24762,6 @@ input[type="checkbox"].file-select-cb,
                 }
             }
 
-            let statusTag = '';
-            if (isInstalled || type === 'local') {
-                statusTag = `<span class="installed-tag" style="color: var(--accent-success); font-weight: 600;"><i class="fas fa-check-circle"></i> ${type === 'local' ? 'Loaded' : 'Installed'}</span>`;
-            }
 
             return `
         <div class="market-card ${isIncompatible ? 'incompatible' : ''}" 
@@ -23668,13 +24776,12 @@ input[type="checkbox"].file-select-cb,
             ${isIncompatible ? '<div class="incompatible-badge" style="position: absolute; top: 10px; right: 10px; background: var(--accent-error); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700;">Incompatible</div>' : ''}
           </div>
           <div class="card-body" style="padding: 1.25rem;">
-            <div class="card-info notranslate" style="margin-bottom: 1rem;">
-              <h3 style="margin: 0 0 0.25rem 0; font-size: 1.1rem;">${escapeHTML(item.name)}</h3>
-              <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">v${escapeHTML(item.version)} by ${escapeHTML(item.author)}</p>
-            </div>
-            <div class="card-meta" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; font-size: 0.85rem; color: var(--text-secondary);">
-              <span><i class="fas fa-download"></i> ${item.downloads || 0}</span>
-              ${statusTag}
+            <div class="card-info notranslate" style="margin-bottom: 1.25rem;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                <h3 style="margin: 0; font-size: 1.1rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHTML(item.name)}">${escapeHTML(item.name)}</h3>
+                <span style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; margin-top: 2px;"><i class="fas fa-download"></i> ${item.downloads || 0}</span>
+              </div>
+              <p style="margin: 0.25rem 0 0 0; font-size: 0.85rem; color: var(--text-secondary);">v${escapeHTML(item.version)} by ${escapeHTML(item.author)}</p>
             </div>
             <button class="btn ${btnClass} install-btn" 
                     onclick="event.stopPropagation(); window.installModule('${item.id}', '${type}')"
@@ -24056,10 +25163,23 @@ input[type="checkbox"].file-select-cb,
             state.settings.fontPrimary = data.fontPrimary;
             _ls.set('bh-font-primary', data.fontPrimary);
         }
+        if (data.customPrimaryFont !== undefined) {
+            state.settings.customPrimaryFont = data.customPrimaryFont;
+            _ls.set('bh-custom-font-primary', data.customPrimaryFont);
+        }
 
         if (data.fontSecondary) {
             state.settings.fontSecondary = data.fontSecondary;
             _ls.set('bh-font-secondary', data.fontSecondary);
+        }
+        if (data.customSecondaryFont !== undefined) {
+            state.settings.customSecondaryFont = data.customSecondaryFont;
+            _ls.set('bh-custom-font-secondary', data.customSecondaryFont);
+        }
+
+        if (data.customFontImport !== undefined) {
+            state.settings.customFontImport = data.customFontImport;
+            _ls.set('bh-custom-font-import', data.customFontImport);
         }
 
         if (data.gradientBg) {
@@ -24095,9 +25215,79 @@ input[type="checkbox"].file-select-cb,
         state.market.activeThemeId = id;
         _ls.set('bh-active-theme-id', id);
 
-        applyTheme(state.theme);
-        applyAllSettings();
-        updateModalTextColors();
+        themeMorphAnimation(() => {
+            applyTheme(state.theme);
+            applyAllSettings();
+            updateModalTextColors();
+        });
+    }
+
+    function themeMorphAnimation(applyFn) {
+        const style = document.createElement('style');
+        style.id = 'theme-morph-styles';
+        style.textContent = `
+            .theme-morphing, .theme-morphing * {
+                transition: background 1s cubic-bezier(0.4, 0, 0.2, 1), 
+                            background-color 1s cubic-bezier(0.4, 0, 0.2, 1), 
+                            color 1s cubic-bezier(0.4, 0, 0.2, 1), 
+                            border-color 1s cubic-bezier(0.4, 0, 0.2, 1),
+                            box-shadow 1s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            }
+            
+            .theme-sweep-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                z-index: 999999;
+                pointer-events: none;
+                overflow: hidden;
+            }
+            
+            .theme-sweep-line {
+                position: absolute;
+                top: -150%;
+                left: -150%;
+                width: 400%;
+                height: 400%;
+                background: linear-gradient(135deg, 
+                    transparent 45%, 
+                    rgba(255, 255, 255, 0.1) 47%, 
+                    var(--accent-primary, #fbbf24) 50%, 
+                    rgba(255, 255, 255, 0.1) 53%, 
+                    transparent 55%);
+                filter: blur(10px);
+                transform: translate(-20%, -20%);
+                animation: themeSweepReveal 1.2s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+                opacity: 0.8;
+            }
+            
+            @keyframes themeSweepReveal {
+                0% { transform: translate(-40%, -40%); opacity: 0; }
+                20% { opacity: 1; }
+                80% { opacity: 1; }
+                100% { transform: translate(10%, 10%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+
+        const overlay = document.createElement('div');
+        overlay.className = 'theme-sweep-overlay';
+        overlay.innerHTML = '<div class="theme-sweep-line"></div>';
+        document.body.appendChild(overlay);
+
+        document.documentElement.classList.add('theme-morphing');
+
+        setTimeout(() => {
+            applyFn();
+        }, 100);
+
+        setTimeout(() => {
+            document.documentElement.classList.remove('theme-morphing');
+            overlay.remove();
+            style.remove();
+        }, 1500);
     }
 
     function showMarketPreview(type, id) {
@@ -24140,7 +25330,7 @@ input[type="checkbox"].file-select-cb,
             prevBtnClass = 'btn-outline';
         } else if (isTheme) {
             if (isApplied) {
-                prevBtnText = '<i class="fas fa-check" style="margin-right: 0.5rem;"></i> Applied';
+                prevBtnText = '<i class="fas fa-check-circle" style="margin-right: 0.5rem;"></i> Active';
                 prevBtnDisabled = true;
                 prevBtnClass = 'btn-outline';
             } else {
@@ -24298,7 +25488,7 @@ input[type="checkbox"].file-select-cb,
             },
 
             showToast: (msg, type) => showToast(msg, type),
-            openConfirmModal: (title, msg, onConfirm, confirmText, isDanger) => openConfirmModal(title, msg, onConfirm, confirmText, isDanger),
+            openConfirmModal: (title, msg, onConfirm, confirmText, isDanger, onCancel, isHTML) => openConfirmModal(title, msg, onConfirm, confirmText, isDanger, onCancel, isHTML),
 
             on: (event, handler) => {
                 if (!pluginEventBus[event]) pluginEventBus[event] = [];
@@ -24327,9 +25517,7 @@ input[type="checkbox"].file-select-cb,
 
             appendConsoleLog: (msg, type = 'info') => appendConsoleLog(msg, type),
 
-            getServers: () => state.serverCreator?.servers || [],
             getDetails: (serverId) => state.serverDetailsCache?.[serverId]?.data || null,
-
             isNodeServer: (details) => isNodeServer(details),
             isPythonServer: (details) => isPythonServer(details),
             vfsInvalidate: (identifier, directory) => vfsInvalidate(identifier, directory),
@@ -24869,6 +26057,13 @@ input[type="checkbox"].file-select-cb,
         document.addEventListener('DOMContentLoaded', init);
     } else {
         init();
+    }
+    // 
+    if (state.devMode) {
+        window.state = state;
+        window.navigateTo = navigateTo;
+        window.updateCoinCollectorUI = updateCoinCollectorUI;
+        window.updateMainContent = updateMainContent;
     }
 })();
 // all hail the spaghetti!!
