@@ -57,8 +57,9 @@ class ContentScript {
   async init(osrcF = false) {
     console.log('[BananaBurner] Content script initialized, checking status...');
 
-    if (!window.location.pathname.startsWith('/panel')) {
-      console.log('[BananaBurner] Not on /panel, skipping injection.');
+    const path = window.location.pathname;
+    if (!path.startsWith('/panel') && !path.startsWith('/login')) {
+      console.log('[BananaBurner] Path not supported, skipping injection.');
       return;
     }
 
@@ -66,6 +67,10 @@ class ContentScript {
     if (!response || !response.enabled) {
       console.log('[BananaBurner] Extension is disabled');
       return;
+    }
+
+    if (path.startsWith('/login')) {
+      this.modifyLoginPage();
     }
     const osrcT = await this.osrcT(response);
     if (osrcT) return;
@@ -77,6 +82,93 @@ class ContentScript {
     });
 
     this.setupMutationObserver();
+  }
+
+  modifyLoginPage() {
+    if (!document.getElementById('banana-login-styles')) {
+      const style = document.createElement('style');
+      style.id = 'bananaa-login-styles';
+      style.textContent = `
+        .login_effect { 
+          background-image: linear-gradient(-60deg, rgb(255 127 39) 50%, #893a11 50%) !important; 
+        }
+        :root { 
+          --navbar-bg-color: hsl(33.7deg 100% 26.09%) !important; 
+        }
+        .logindescription button { 
+          background: #cc9329 !important; 
+        }
+        .bh-login-checkbox-container {
+          margin-top: 1rem;
+          display: flex;
+          align-items: center;
+          gap: 0.65rem;
+          color: rgba(255, 255, 255, 0.8);
+          font-size: 0.9rem;
+          cursor: pointer;
+          user-select: none;
+          justify-content: center;
+          transition: opacity 0.2s;
+        }
+        .bh-login-checkbox-container:hover {
+          opacity: 0.9;
+        }
+        .bh-login-checkbox-container input {
+          cursor: pointer;
+          accent-color: #cc9329;
+          width: 17px;
+          height: 17px;
+          margin: 0;
+          border-radius: 4px;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const iconUrl = 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon48.png';
+    const navbarLogoImg = document.querySelector('.navbar-logo img');
+    if (navbarLogoImg && navbarLogoImg.src !== iconUrl) {
+      navbarLogoImg.src = iconUrl;
+    }
+
+    const selector = 'section.loginimage .logindescription .logindescriptionborder p';
+    const targetP = document.querySelector(selector);
+    if (targetP) {
+      const regex = /and\s+agree\s+that\s+you\s+will\s+be\s+auto+matically\s+added\s+to\s+Bot-Hosting's\s+official\s+Discord\s+server\.?/i;
+      if (regex.test(targetP.textContent)) {
+        targetP.innerHTML = targetP.innerHTML.replace(regex, '').trim();
+        if (!targetP.innerHTML.endsWith('.') && targetP.innerHTML.length > 0) {
+          targetP.innerHTML += '.';
+        }
+      }
+
+      const checkboxId = 'bh-join-server-checkbox';
+      if (!document.getElementById(checkboxId)) {
+        const container = document.createElement('label');
+        container.className = 'bh-login-checkbox-container';
+        container.htmlFor = checkboxId;
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = checkboxId;
+
+        this.sendMessage({ action: 'getStatus' }).then(status => {
+          checkbox.checked = status.joinSupportServer !== false;
+        });
+
+        checkbox.onchange = () => {
+          this.sendMessage({ action: 'setJoinSupportServer', enabled: checkbox.checked });
+        };
+
+        container.appendChild(checkbox);
+        const text = document.createElement('span');
+        text.textContent = 'Join Discord support server';
+        container.appendChild(text);
+
+        targetP.parentNode.insertBefore(container, targetP.nextSibling);
+        targetP.parentNode.insertBefore(document.createElement('br'), container.nextSibling);
+      }
+    }
   }
 
 
@@ -200,6 +292,9 @@ class ContentScript {
     const observer = new MutationObserver((mutations) => {
       if (!this.cloudflareChecked) {
         this.checkCloudflare();
+      }
+      if (window.location.pathname.startsWith('/login')) {
+        this.modifyLoginPage();
       }
     });
 
@@ -350,4 +445,4 @@ if (document.readyState === 'loading') {
 } else {
   new ContentScript();
 }
-///////////////
+////////////////
