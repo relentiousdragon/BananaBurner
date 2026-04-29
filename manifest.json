@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BananaBurner 2979",
-  "version": "2979.1.2",
+  "version": "2979.1.3",
   "description": "MORE BANANAAAAA!11!",
   "permissions": [
     "activeTab",
@@ -33,7 +33,7 @@
     {
       "matches": [
         "https://bot-hosting.net/panel/*",
-        "https://bot-hosting.cloud/panel/*"
+        "https://bot-hosting.net/login*"
       ],
       "js": [
         "content.js"
