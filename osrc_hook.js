@@ -21,6 +21,6 @@
         });
     } catch (e) { }
 
-    console.log('Banana Burner: OSRC Interceptor active');
+    console.log('[Banana Burner] OSRC Interceptor active');
 })();
-/////
+//////
