@@ -9146,9 +9146,8 @@ debug:
                 suspended: !!data.suspended
             };
 
-            if (data.serverid) snapshots[data.serverid] = snap;
-            if (data.identifier) snapshots[data.identifier] = snap;
-            if (!data.serverid && !data.identifier) snapshots[serverId] = snap;
+            const finalId = data.serverid || serverId;
+            if (finalId) snapshots[finalId] = snap;
         }
 
         if (Object.keys(snapshots).length === 0) {
@@ -26070,4 +26069,4 @@ input[type="checkbox"].file-select-cb,
 // Termux Labs 2026 - @agentzzrp (relentiousdragon), @paccman_0 on Discord
 // Shoutout to every early adopter, everyone who suggested, reported a bug, or gave feedback!
 // If you're confused by a function or something, send me a DM on Discord @agentzzrp, if i'm unavailable, dm @paccman_0 instead but only for plugin framework related stuff.
-///////////////////////
+////////////////////////
