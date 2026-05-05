@@ -5,12 +5,12 @@
     // MAKE SURE YOU DOWNLOADED THE SCRIPT FROM GITHUB @relentiousdragon
     // IF YOU DOWNLOADED IT FROM ANYWHERE ELSE, DELETE AND REPORT IT TO TERMUX LABS
     // IF A STRANGER GAVE YOU THIS FILE 11 TIMES OUT OF 10 YOU ARE GETTING SCREWED.
-    const CONFIG = {
-        SCRIPT_VERSION: '3.5', // *
+    let CONFIG = {
+        SCRIPT_VERSION: '3.6', // *
         FAVICON_URL: 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon48.png', // ?
         MAX_COINS_PER_DAY: 10, // *
         NORMAL_COIN_INTERVAL: localStorage.getItem('bh-normal-coin-interval') ? parseInt(localStorage.getItem('bh-normal-coin-interval')) : 10000, // ?
-        CAPTCHA_COIN_INTERVAL: localStorage.getItem('bh-captcha-coin-interval') ? parseInt(localStorage.getItem('bh-captcha-coin-interval')) : 12000, // ?
+        CAPTCHA_COIN_INTERVAL: localStorage.getItem('bh-captcha-coin-interval') ? parseInt(localStorage.getItem('bh-captcha-coin-interval')) : 12500, // ?
         HCAPTCHA_SITEKEY: '21335a07-5b97-4a79-b1e9-b197dc35017a', // *
         UPTIME_MONITOR: 'https://monitor.livestatustracker.com/', // ?
         CONTROL_PANEL_STATUS: 'https://monitor.livestatustracker.com/status/control', // !
@@ -314,8 +314,8 @@
       <div class="bh-asset-wrapper ${className}" style="display: flex; align-items: center; justify-content: center; position: relative; width: 100%; height: 100%;">
         <img src="${src}" 
              class="bh-asset-img" 
-             style="width: 100%; height: 100%; object-fit: contain; display: block;"
-             onload="this.parentElement.classList.add('bh-asset-loaded'); this.closest('.v2-banana, .logo-inner, .banana-inner')?.classList.add('bh-has-asset'); if(this.nextElementSibling) this.nextElementSibling.style.display='none';"
+             style="width: 100%; height: 100%; object-fit: contain; display: none;"
+             onload="this.style.display='block'; this.parentElement.classList.add('bh-asset-loaded'); this.closest('.v2-banana, .logo-inner, .banana-inner')?.classList.add('bh-has-asset'); if(this.nextElementSibling) this.nextElementSibling.style.display='none';"
              onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block'; this.parentElement.classList.remove('bh-asset-loaded'); this.closest('.v2-banana, .logo-inner, .banana-inner')?.classList.remove('bh-has-asset');">
         <span class="bh-asset-emoji-fallback" style="display: none;">${CONFIG.FALLBACK_BANANA}</span>
       </div>
@@ -387,6 +387,7 @@
     })();
     //
     let state = {
+        loadTime: Date.now(),
         lastFileRefresh: 0,
         fbRefreshing: false,
         currentView: 'dashboard',
@@ -1751,8 +1752,16 @@
             } else {
                 state.coinCollector.coinsCollected = 0;
             }
+            updateCaptchaPRD();
         } catch (e) {
             state.coinCollector.coinsCollected = 0;
+        }
+    }
+
+    function updateCaptchaPRD() {
+        const count = state.coinCollector.coinsCollected;
+        if (count === 0 || count === 4 || count === 9) {
+            state.coinCollector.nextCoinRequiresCaptcha = true;
         }
     }
 
@@ -3478,46 +3487,17 @@ debug:
 
         splash.offsetHeight;
 
-        const updateProgress = (text) => {
+        (async () => {
+            while (!state.mainAppInitialized) {
+                await new Promise(r => setTimeout(r, 100));
+            }
+
             const progressText = splash.querySelector(state.settings.splashV2 ? '.v2-text' : '.progress-text');
             const progressFill = splash.querySelector('.progress-fill');
-            const v2ProgressBar = splash.querySelector('.v2-progress-bar');
+            if (progressText) progressText.textContent = 'Banana-core READY!!!';
+            if (progressFill) progressFill.style.width = '100%';
 
-            if (progressText) progressText.textContent = text;
-
-            const stages = [
-                'Connecting to Bothosting API...',
-                'Thonking...',
-                'Fetching User Profile...',
-                'STEALING BANANAS!',
-                'Loading Server List...',
-                'Syncing with Control Panel...',
-                'Injecting bananas into core...',
-                'Synchronizing Transactions...',
-                'Banana-core READY!!!'
-            ];
-            const index = stages.indexOf(text);
-            const percent = index === -1 ? 0 : ((index + 1) / stages.length) * 100;
-
-            if (progressFill) progressFill.style.width = `${percent}%`;
-
-            if (v2ProgressBar) {
-                const radius = v2ProgressBar.r.baseVal.value;
-                const circumference = 2 * Math.PI * radius;
-                const offset = circumference - (percent / 100) * circumference;
-                v2ProgressBar.style.strokeDasharray = `${circumference} ${circumference}`;
-                v2ProgressBar.style.strokeDashoffset = offset;
-            }
-        };
-
-        (async () => {
-            if (!state.mainAppInitialized) {
-                await initializeMainApp(updateProgress);
-                state.mainAppInitialized = true;
-            } else {
-                updateProgress('Banana-core READY!!!');
-                await new Promise(r => setTimeout(r, 600));
-            }
+            await new Promise(r => setTimeout(r, 600));
 
             if (state.settings.splashV2) {
                 const circle = splash.querySelector('.v2-circle-wrapper');
@@ -3563,6 +3543,7 @@ debug:
                     document.body.style.position = '';
                     document.body.style.width = '';
                     document.body.style.height = '';
+                    setupLordiconListeners();
                 }, 600);
             }, state.settings.splashV2 ? 800 : 600);
         })();
@@ -4141,16 +4122,15 @@ debug:
         }
 
         if (onProgress) onProgress('Connecting to Bothosting API...');
-        await checkApiStatus();
 
         if (onProgress) onProgress('Thonking...');
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 150));
 
         if (onProgress) onProgress('Fetching User Profile...');
         await fetchUserData();
 
         if (onProgress) onProgress('STEALING BANANAS!');
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 150));
 
         if (onProgress) onProgress('Loading Server List...');
         await fetchServers();
@@ -4173,7 +4153,7 @@ debug:
         }
 
         if (onProgress) onProgress('Injecting bananas into core...');
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 150));
 
         if (onProgress) onProgress('Synchronizing Transactions...');
         loadActivityCache();
@@ -4184,7 +4164,7 @@ debug:
         }
 
         if (onProgress) onProgress('Banana-core READY!!!');
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 150));
 
         const backgroundInterval = osrc ? 30000 : 120000;
         const resourcesInterval = osrc ? 45000 : 120000;
@@ -5747,7 +5727,7 @@ debug:
                 const data = await response.json();
                 state.serverCreator.servers = data.servers || [];
 
-                localStorage.setItem('bh-servers-list-cache', JSON.stringify({
+                _ls.set('bh-servers-list-cache', JSON.stringify({
                     timestamp: Date.now(),
                     data: state.serverCreator.servers
                 }));
@@ -6182,7 +6162,7 @@ debug:
                         state.coinCollector.coinsCollected = error.coinsClaimed || 10;
                         updateCoinCollectorUI();
                         SoundManager.playAllCoinsClaimed();
-                        showToast(`Max coins reached! ${state.coinCollector.coinsCollected}/10 today`, 'success');
+                        showToast(`Max coins reached! ${state.coinCollector.coinsCollected}/${CONFIG.MAX_COINS_PER_DAY} today`, 'success');
                         stopCoinCollector();
                         state.coinCollector.captchaClaimInProgress = false;
                     } else {
@@ -6286,6 +6266,7 @@ debug:
             if (result.data.captcha === true) {
                 state.coinCollector.nextCoinRequiresCaptcha = true;
             }
+            updateCaptchaPRD();
             saveCoinProgress();
             updateCoinCollectorUI();
             SoundManager.playCoinCollect();
@@ -6318,6 +6299,12 @@ debug:
     }
 
     async function InitialCheck() {
+        if (state.coinCollector.nextCoinRequiresCaptcha) {
+            state.coinCollector.nextCoinRequiresCaptcha = false;
+            handleCaptchaError();
+            return;
+        }
+
         state.coinCollector.totalAttempts++;
         updateCoinCollectorUI();
         const result = await claimCoins();
@@ -6334,6 +6321,7 @@ debug:
             if (result.data.captcha === true) {
                 state.coinCollector.nextCoinRequiresCaptcha = true;
             }
+            updateCaptchaPRD();
             saveCoinProgress();
             updateCoinCollectorUI();
             SoundManager.playCoinCollect();
@@ -6381,10 +6369,9 @@ debug:
         existingToasts.forEach(toast => toast.remove());
         state.showingToasts = 0;
 
-        //showToast('Coin collection started!', 'info');
-
         fetchUserData();
         updateCoinCollectorUI();
+
         attemptCoinCollection();
     }
 
@@ -6402,7 +6389,7 @@ debug:
             state.coinCollector.resetTimerInterval = null;
         }
 
-        showToast(`Stopped. Got ${state.coinCollector.coinsCollected}/10 coins today`, 'info');
+        showToast(`Stopped. Got ${state.coinCollector.coinsCollected}/${CONFIG.MAX_COINS_PER_DAY} coins today`, 'info');
         updateCoinCollectorUI();
     }
 
@@ -17668,7 +17655,7 @@ ignite();
             <i class="fas fa-chart-line"></i>
           </div>
           <div class="stat-info">
-            <h3>${state.coinCollector.coinsCollected}/10</h3>
+            <h3>${state.coinCollector.coinsCollected}/${CONFIG.MAX_COINS_PER_DAY}</h3>
             <p>Today's Coins</p>
           </div>
         </div>
@@ -17824,7 +17811,7 @@ ignite();
             </div>
             <div class="stat">
               <label>Collected Today</label>
-              <div class="value"><span id="bh-coins-collected">${state.coinCollector.coinsCollected}</span>/10</div>
+              <div class="value"><span id="bh-coins-collected">${state.coinCollector.coinsCollected}</span>/${CONFIG.MAX_COINS_PER_DAY}</div>
             </div>
             <div class="stat">
               <label>Total Attempts</label>
@@ -18222,8 +18209,58 @@ ignite();
         `;
     }
     //
-    function init() {
+    function isSCF() {
+        try {
+            const userCache = _ls.json('bh-user-cache', null);
+            const serverCache = _ls.json('bh-servers-list-cache', null);
+            if (!userCache || !serverCache) return false;
+            const now = Date.now();
+            const userAge = now - (userCache.timestamp || 0);
+            const serverAge = now - (serverCache.timestamp || 0);
+
+            const maxAge = 60000;
+            return (userAge < maxAge) && (serverAge < maxAge);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function fetchRemoteConfig() {
+        const CACHE_KEY = 'bh-remote-config-cache';
+        const CACHE_DURATION = 60000;
+        const cached = _ls.json(CACHE_KEY, null);
+
+        if (cached && (Date.now() - (cached.timestamp || 0) < CACHE_DURATION)) {
+            if (CONFIG.DEBUG) BnLog('DEBUG', 'Using cached remote config');
+            Object.assign(CONFIG, cached.data);
+            return;
+        }
+
+        try {
+            const response = await fetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/conf.dat?t=' + Date.now());
+            if (response.ok) {
+                const remoteConfig = await response.json();
+                _ls.set(CACHE_KEY, JSON.stringify({ data: remoteConfig, timestamp: Date.now() }));
+                Object.assign(CONFIG, remoteConfig);
+                if (CONFIG.DEBUG) BnLog('DEBUG', 'Remote config updated from GitHub');
+            }
+        } catch (e) {
+            BnLog('WARN', 'Failed to fetch remote config:', e);
+        }
+    }
+
+    async function init() {
+        if (state.isInitializing) return;
+        state.isInitializing = true;
+
+        const CACHE_KEY = 'bh-remote-config-cache';
+        const CACHE_DURATION = 60000;
+        const cached = _ls.json(CACHE_KEY, null);
+        const isFresh = cached && (Date.now() - (cached.timestamp || 0) < CACHE_DURATION);
+
+        fetchRemoteConfig();
         handleInitialRouting();
+
         const osrc = localStorage.getItem('OSRC') === 'true';
         if (osrc) {
             window.addEventListener('contextmenu', (e) => {
@@ -18248,52 +18285,73 @@ ignite();
         updateRenewalTimers();
 
         showSecurityConfirmation().then(() => {
-            setTimeout(() => {
-                if (state.settings.startHidden) {
-                    state.splashShown = true;
-                    createMainOverlay();
-                    const mainOverlay = document.getElementById('bh-overlay');
-                    if (mainOverlay) {
+            const splashYN = (!osrc || !isFresh) && !state.settings.startHidden && !isSCF();
+
+            const progressHandler = (text) => {
+                const stages = [
+                    'Connecting to Bothosting API...',
+                    'Thonking...',
+                    'Fetching User Profile...',
+                    'STEALING BANANAS!',
+                    'Loading Server List...',
+                    'Syncing with Control Panel...',
+                    'Injecting bananas into core...',
+                    'Synchronizing Transactions...',
+                    'Banana-core READY!!!'
+                ];
+                const index = stages.indexOf(text);
+                const percent = index === -1 ? 0 : ((index + 1) / stages.length) * 100;
+
+                const splash = document.getElementById('bh-splash');
+                const banana = document.getElementById('bh-floating-banana');
+
+                if (splash && splash.style.display !== 'none') {
+                    const fill = splash.querySelector('.progress-fill');
+                    const pText = splash.querySelector('.progress-text');
+                    if (fill) fill.style.width = `${percent}%`;
+                    if (pText) pText.innerText = text;
+                } else if (banana) {
+                    updateBananaLoadingProgress(percent);
+                }
+            };
+
+            if (!splashYN) {
+                state.splashShown = true;
+                createMainOverlay();
+                const mainOverlay = document.getElementById('bh-overlay');
+
+                if (mainOverlay) {
+                    if (state.settings.startHidden) {
                         mainOverlay.style.display = 'none';
                         mainOverlay.style.opacity = '0';
+                    } else {
+                        mainOverlay.style.display = 'block';
+                        mainOverlay.style.opacity = '1';
                     }
-
-                    setupLordiconListeners();
-
-                    createFloatingBanana(true);
-                    initializeMainApp((text) => {
-                        const banana = document.getElementById('bh-floating-banana');
-                        if (banana) {
-                            const stages = [
-                                'Connecting to Bothosting API...',
-                                'Thonking...',
-                                'Fetching User Profile...',
-                                'STEALING BANANAS!',
-                                'Loading Server List...',
-                                'Syncing with Control Panel...',
-                                'Injecting bananas into core...',
-                                'Synchronizing Transactions...',
-                                'Banana-core READY!!!'
-                            ];
-                            const index = stages.indexOf(text);
-                            const percent = index === -1 ? 0 : ((index + 1) / stages.length) * 100;
-                            updateBananaLoadingProgress(percent);
-                        }
-                    }).then(() => {
-                        state.mainAppInitialized = true;
-                        finishBananaLoading();
-                        startRelaySnapshots();
-                    });
-                } else {
-                    showSplashScreen();
-                    setupLordiconListeners();
-                    startRelaySnapshots();
                 }
-            }, 100);
+
+                setupLordiconListeners();
+                if (state.settings.startHidden) createFloatingBanana(true);
+
+                initializeMainApp(progressHandler).then(() => {
+                    state.mainAppInitialized = true;
+                    state.isInitializing = false;
+                    if (state.settings.startHidden) finishBananaLoading();
+                    startRelaySnapshots();
+                });
+            } else {
+                showSplashScreen();
+                setupLordiconListeners();
+                startRelaySnapshots();
+                initializeMainApp(progressHandler).then(() => {
+                    state.mainAppInitialized = true;
+                    state.isInitializing = false;
+                });
+            }
         }).catch(err => {
+            state.isInitializing = false;
             BnLog('WARN', 'Startup aborted:', err);
         });
-
     }
     //
     const NAV_CONFIG = {
