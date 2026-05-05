@@ -10,7 +10,7 @@
         FAVICON_URL: 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon48.png', // ?
         MAX_COINS_PER_DAY: 10, // *
         NORMAL_COIN_INTERVAL: localStorage.getItem('bh-normal-coin-interval') ? parseInt(localStorage.getItem('bh-normal-coin-interval')) : 10000, // ?
-        CAPTCHA_COIN_INTERVAL: localStorage.getItem('bh-captcha-coin-interval') ? parseInt(localStorage.getItem('bh-captcha-coin-interval')) : 12500, // ?
+        CAPTCHA_COIN_INTERVAL: localStorage.getItem('bh-captcha-coin-interval') ? parseInt(localStorage.getItem('bh-captcha-coin-interval')) : 12000, // ?
         HCAPTCHA_SITEKEY: '21335a07-5b97-4a79-b1e9-b197dc35017a', // *
         UPTIME_MONITOR: 'https://monitor.livestatustracker.com/', // ?
         CONTROL_PANEL_STATUS: 'https://monitor.livestatustracker.com/status/control', // !
