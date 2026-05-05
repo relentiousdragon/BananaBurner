@@ -9,8 +9,8 @@
         SCRIPT_VERSION: '3.6', // *
         FAVICON_URL: 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon48.png', // ?
         MAX_COINS_PER_DAY: 10, // *
-        NORMAL_COIN_INTERVAL: localStorage.getItem('bh-normal-coin-interval') ? parseInt(localStorage.getItem('bh-normal-coin-interval')) : 10000, // ?
-        CAPTCHA_COIN_INTERVAL: localStorage.getItem('bh-captcha-coin-interval') ? parseInt(localStorage.getItem('bh-captcha-coin-interval')) : 12000, // ?
+        NORMAL_COIN_INTERVAL: 10000, // ?
+        CAPTCHA_COIN_INTERVAL: 12000, // ?
         HCAPTCHA_SITEKEY: '21335a07-5b97-4a79-b1e9-b197dc35017a', // *
         UPTIME_MONITOR: 'https://monitor.livestatustracker.com/', // ?
         CONTROL_PANEL_STATUS: 'https://monitor.livestatustracker.com/status/control', // !
@@ -346,7 +346,7 @@
             'bh-toast-position', 'bh-cursor-glow', 'bh-cursor-glow-color',
             'bh-lazy-load', 'bh-privacy-mode', 'bh-always-hide', 'bh-start-hidden',
             'bh-splash-v2', 'bh-lightweight-editor', 'bh-stats',
-            'bh-normal-coin-interval', 'bh-captcha-coin-interval', 'bh-debug',
+            'bh-debug',
             'bh-server-details-cache', 'bh-activity-cache-days', 'bh-security-accepted',
             'bh-trusted-plugins', 'bh-dev-mode', 'bh-local-plugins'
         ];
@@ -8057,31 +8057,6 @@ debug:
                 </label>
               </div>
 
-              <div class="setting-section" style="padding: 1rem; background: var(--modal-tertiary-bg); border-radius: 12px; display: none; flex-direction: column; gap: 1rem;">
-                  <h4 style="margin: 0; font-size: 0.9em; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-history"></i> Coin Intervals</h4>
-                  
-                  <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
-                      <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
-                          <label style="font-size: 0.85em; font-weight: 600;">NORMAL Interval</label>
-                          <span id="normal-interval-val" style="font-size: 0.8em; color: var(--accent-primary); font-family: monospace;">${CONFIG.NORMAL_COIN_INTERVAL / 1000}s</span>
-                      </div>
-                      <div style="display: flex; gap: 0.75rem; width: 100%; align-items: center;">
-                          <input type="range" id="normal-interval-slider" min="5" max="30" value="${CONFIG.NORMAL_COIN_INTERVAL / 1000}" style="flex: 1;">
-                          <button class="btn btn-sm" id="reset-normal-interval" style="padding: 2px 8px; font-size: 0.7em;">Reset</button>
-                      </div>
-                  </div>
-
-                  <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
-                      <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
-                          <label style="font-size: 0.85em; font-weight: 600;">CAPTCHA Interval</label>
-                          <span id="captcha-interval-val" style="font-size: 0.8em; color: var(--accent-primary); font-family: monospace;">${CONFIG.CAPTCHA_COIN_INTERVAL / 1000}s</span>
-                      </div>
-                      <div style="display: flex; gap: 0.75rem; width: 100%; align-items: center;">
-                          <input type="range" id="captcha-interval-slider" min="5" max="30" value="${CONFIG.CAPTCHA_COIN_INTERVAL / 1000}" style="flex: 1;">
-                          <button class="btn btn-sm" id="reset-captcha-interval" style="padding: 2px 8px; font-size: 0.7em;">Reset</button>
-                      </div>
-                  </div>
-              </div>
 
               <div class="setting-item">
                 <div class="setting-info">
@@ -8594,50 +8569,6 @@ debug:
                 localStorage.setItem('bh-debug', e.target.checked);
                 showToast(`Debug Mode ${e.target.checked ? 'enabled' : 'disabled'} (Requires reload)`, 'info');
             };
-        }
-
-        const normalSlider = modal.querySelector('#normal-interval-slider');
-        const normalVal = modal.querySelector('#normal-interval-val');
-        const resetNormal = modal.querySelector('#reset-normal-interval');
-
-        if (normalSlider) {
-            normalSlider.oninput = () => {
-                const val = normalSlider.value;
-                if (normalVal) normalVal.textContent = val + 's';
-                CONFIG.NORMAL_COIN_INTERVAL = val * 1000;
-                localStorage.setItem('bh-normal-coin-interval', CONFIG.NORMAL_COIN_INTERVAL);
-            };
-            if (resetNormal) {
-                resetNormal.onclick = () => {
-                    normalSlider.value = 10;
-                    if (normalVal) normalVal.textContent = '10s';
-                    CONFIG.NORMAL_COIN_INTERVAL = 10000;
-                    localStorage.setItem('bh-normal-coin-interval', 10000);
-                    showToast('Normal interval reset to 10s', 'info');
-                };
-            }
-        }
-
-        const captchaSlider = modal.querySelector('#captcha-interval-slider');
-        const captchaVal = modal.querySelector('#captcha-interval-val');
-        const resetCaptcha = modal.querySelector('#reset-captcha-interval');
-
-        if (captchaSlider) {
-            captchaSlider.oninput = () => {
-                const val = captchaSlider.value;
-                if (captchaVal) captchaVal.textContent = val + 's';
-                CONFIG.CAPTCHA_COIN_INTERVAL = val * 1000;
-                localStorage.setItem('bh-captcha-coin-interval', CONFIG.CAPTCHA_COIN_INTERVAL);
-            };
-            if (resetCaptcha) {
-                resetCaptcha.onclick = () => {
-                    captchaSlider.value = 12;
-                    if (captchaVal) captchaVal.textContent = '12s';
-                    CONFIG.CAPTCHA_COIN_INTERVAL = 12000;
-                    localStorage.setItem('bh-captcha-coin-interval', 12000);
-                    showToast('Captcha interval reset to 12s', 'info');
-                };
-            }
         }
 
         const resetBtn = modal.querySelector('#reset-local-storage-btn');
