@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <style>
@@ -14,6 +15,8 @@
       --text-secondary: #94a3b8;
       --border-color: #334155;
     }
+
+
 
     body {
       width: 360px;
@@ -241,6 +244,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="container">
     <div class="header">
@@ -252,12 +256,14 @@
         <div class="version">Version <span id="version">2979.1.0</span></div>
       </div>
     </div>
+
     <div id="updateBanner" class="update-banner">
       <span>Update Available (<span id="newVersion"></span>)</span>
       <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 4l-1.41 1.41L15.17 10H4v2h11.17l-4.58 4.59L12 18l8-8z" />
       </svg>
     </div>
+
     <div id="siteIndicator" class="site-indicator off-site">
       <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
         <path
@@ -265,6 +271,7 @@
       </svg>
       <span id="siteStatus">Not on Bot-Hosting panel</span>
     </div>
+
     <div class="status-card">
       <div class="status-row">
         <span class="status-label">Status</span>
@@ -273,6 +280,7 @@
           <span class="slider"></span>
         </label>
       </div>
+
       <div class="status-row" id="rowOverrideSRC">
         <span class="status-label">OverrideSRC</span>
         <label class="toggle-switch">
@@ -280,15 +288,22 @@
           <span class="slider"></span>
         </label>
       </div>
+
       <div class="status-row">
         <span class="status-label">Extension Version</span>
         <span class="status-value" id="ext-version">Loading...</span>
       </div>
+
     </div>
+
+
+
     <div id="message" class="message"></div>
   </div>
+
   <script src="popup.js"></script>
 </body>
+
 </html>
 
 <!--/////////////////// Termux Labs 2026  -->
