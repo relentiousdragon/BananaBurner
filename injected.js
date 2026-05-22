@@ -1,12 +1,134 @@
-(() => {
+(async () => {
     // BANANABURNER 2979 BY TERMUX LABS
     // IT IS PROHIBITED TO MODIFY AND REDISTRIBUTE THIS CODE WITHOUT PERMISSION
     // YOU ARE HOWEVER ALLOWED TO MODIFY IT FOR PERSONAL USE
     // MAKE SURE YOU DOWNLOADED THE SCRIPT FROM GITHUB @relentiousdragon
     // IF YOU DOWNLOADED IT FROM ANYWHERE ELSE, DELETE AND REPORT IT TO TERMUX LABS
     // IF A STRANGER GAVE YOU THIS FILE 11 TIMES OUT OF 10 YOU ARE GETTING SCREWED.
+    try {
+        const isSafeMode = new URLSearchParams(window.location.search).get('safeMode') === 'true';
+        const OSRC_ENABLED = localStorage.getItem('OSRC') === 'true';
+        const OTA_PREF = localStorage.getItem('bh-ota-version') || 'Latest > Bundled';
+        const BUNDLED_VERSION = '3.7';
+
+        if (isSafeMode) {
+            console.log('[BananaBurner] Safe Mode active, running bundled version.');
+        }
+
+        if (OTA_PREF === 'Canary > Bundled' && !isSafeMode && !window.__bh_canary_running) {
+            const overlay = document.createElement('div');
+            overlay.id = 'bh-canary-bootloader';
+            overlay.style.cssText = 'position: fixed; inset: 0; background: #000; z-index: 9999999; display: flex; align-items: center; justify-content: center; flex-direction: column; font-family: sans-serif; color: #fff;';
+
+            const logoImg = document.createElement('img');
+            logoImg.src = 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon128.png';
+            logoImg.style.cssText = 'width: 128px; height: 128px; filter: brightness(0) invert(1) drop-shadow(0 0 10px #00bfff) drop-shadow(0 0 25px #0055ff);';
+            overlay.appendChild(logoImg);
+            document.documentElement.appendChild(overlay);
+
+            const startTime = Date.now();
+            let success = false;
+            let targetScript = null;
+            let noLongerBeta = false;
+
+            const telToken = localStorage.getItem('telemetry-token');
+            if (telToken) {
+                try {
+                    const response = await fetch('https://monitor.livestatustracker.com/bb/canary/injected.js?telemetryToken=' + encodeURIComponent(telToken), {
+                        method: 'GET',
+                        credentials: 'omit'
+                    });
+
+                    if (response.ok) {
+                        const scriptText = await response.text();
+                        if (scriptText && scriptText.trim().length > 0) {
+                            targetScript = scriptText;
+                            success = true;
+                        } else {
+                            console.error('[BananaBurner] Canary script was empty.');
+                        }
+                    } else if (response.status === 403 || response.status === 401) {
+                        noLongerBeta = true;
+                    }
+                } catch (e) {
+                    console.error('[BananaBurner] Canary fetch failed:', e);
+                }
+            } else {
+                noLongerBeta = true;
+            }
+
+            const elapsed = Date.now() - startTime;
+            if (elapsed < 300) {
+                await new Promise(r => setTimeout(r, 300 - elapsed));
+            }
+
+            if (success && targetScript) {
+                console.log('[BananaBurner] Canary Bootloader starting fetched Canary script...');
+                overlay.remove();
+                window.__bh_canary_running = true;
+                new Function(targetScript)();
+                return;
+            } else {
+                overlay.remove();
+                if (noLongerBeta) {
+                    localStorage.setItem('bh-ota-version', 'Latest > Bundled');
+                    window.__bh_pending_toast = "You are no longer a beta tester.";
+                }
+            }
+        }
+
+        if (OSRC_ENABLED && !isSafeMode && !window.__bh_canary_running) {
+            const db = await new Promise((resolve) => {
+                const req = indexedDB.open('bh-ota-db', 1);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('scripts')) {
+                        db.createObjectStore('scripts', { keyPath: 'version' });
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            });
+
+            if (db) {
+                const versions = await new Promise((resolve) => {
+                    const tx = db.transaction('scripts', 'readonly');
+                    const store = tx.objectStore('scripts');
+                    const req = store.getAll();
+                    req.onsuccess = () => resolve(req.result || []);
+                    req.onerror = () => resolve([]);
+                });
+
+                if (versions.length > 0) {
+                    let targetScript = null;
+                    if (OTA_PREF === 'Latest > Bundled') {
+                        versions.sort((a, b) => parseFloat(b.version) - parseFloat(a.version));
+                        if (parseFloat(versions[0].version) > parseFloat(BUNDLED_VERSION)) {
+                            targetScript = versions[0].code;
+                        }
+                    } else if (OTA_PREF !== 'Bundled') {
+                        const specific = versions.find(v => v.version === OTA_PREF);
+                        if (specific) targetScript = specific.code;
+                    }
+
+                    if (targetScript) {
+                        if (!targetScript.includes('let CONFIG = {') || !targetScript.trim().endsWith('////////////////////')) {
+                            console.error('[BananaBurner] script in cache failed integrity check. Bypassing...');
+                        } else {
+                            console.log('[BananaBurner] Bootloader starting injected.js version ' + (OTA_PREF === 'Latest > Bundled' ? versions[0].version : OTA_PREF) + '...');
+                            new Function(targetScript)();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[BananaBurner] Bootloader failed', e);
+    }
+    //
     let CONFIG = {
-        SCRIPT_VERSION: '3.6', // *
+        SCRIPT_VERSION: '3.7', // *
         FAVICON_URL: 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon48.png', // ?
         MAX_COINS_PER_DAY: 10, // *
         NORMAL_COIN_INTERVAL: 10000, // ?
@@ -24,8 +146,89 @@
         },
         FALLBACK_BANANA: '🍌',  // ?
         MARKET: 'https://monitor.livestatustracker.com/bb/market',  // ?
-        TELEMETRY: 'https://monitor.livestatustracker.com/bb/telemetry' // ?       // Ln15160~ : TELEMETRY PAYLOAD
+        TELEMETRY: 'https://monitor.livestatustracker.com/bb/telemetry' // ?       // Ln17540~ : TELEMETRY PAYLOAD
     };
+
+    async function checkTelemetryRedirect() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('telemetryToken');
+        const user = urlParams.get('telemetryUser');
+        if (token && user) {
+            localStorage.setItem('telemetry-token', token);
+            localStorage.setItem('telemetry-username', user);
+            await new Promise(r => setTimeout(r, 350));
+            urlParams.delete('telemetryToken');
+            urlParams.delete('telemetryUser');
+            const searchStr = urlParams.toString();
+            const newUrl = window.location.pathname + (searchStr ? '?' + searchStr : '') + window.location.hash;
+            window.history.replaceState({}, document.title, newUrl);
+            return true;
+        }
+        return false;
+    }
+
+    window.loginToTelemetry = function () {
+        const authUrl = `${CONFIG.TELEMETRY.replace('/telemetry', '/auth/login')}`;
+        window.location.href = authUrl;
+    };
+
+    checkTelemetryRedirect();
+    //
+    async function bbAuth(onProgress) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const isSyncing = urlParams.has('telemetryToken');
+        const hasToken = localStorage.getItem('telemetry-token') && localStorage.getItem('telemetry-token') !== 'null';
+
+        if (!hasToken && !isSyncing) {
+            const osrc = localStorage.getItem('OSRC') !== 'false';
+            const shareData = localStorage.getItem('share-data') !== 'false';
+
+            if (!osrc && !shareData) {
+                BnLog('INFO', 'Skipping Marketplace Auth: OSRC and Telemetry sharing are disabled.');
+                return false;
+            }
+
+            state.isRedirectingToAuth = true;
+
+            showSplashScreen(onProgress);
+
+            if (onProgress) onProgress('Redirecting to Marketplace Auth...');
+
+            await new Promise(r => setTimeout(r, 1200));
+            window.loginToTelemetry();
+            return true;
+        }
+        return false;
+    }
+
+    async function handleBotHostingLogin() {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const affiliate = params.get('affiliate') || params.get('aff') || "";
+        const osrc = localStorage.getItem('OSRC') === 'true';
+
+        if (code && osrc) {
+            try {
+                const response = await fetch('https://bot-hosting.net/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, affiliate })
+                });
+
+                if (!response.ok) throw new Error('Login failed');
+
+                const data = await response.json();
+                if (data.token) {
+                    localStorage.setItem('token', data.token);
+                    const newUrl = window.location.pathname + window.location.search.replace(/[?&]code=[^&]+/, '').replace(/^&/, '?');
+                    window.history.replaceState({}, '', newUrl);
+                }
+            } catch (e) {
+                BnLog('ERROR', 'Bot-Hosting login failed:', e);
+                window.location.href = 'https://bot-hosting.net/login';
+            }
+        }
+    }
 
 
     if (document.documentElement.hasAttribute('data-bh-injected')) {
@@ -113,6 +316,22 @@
             .replace(/'/g, '&#039;');
     };
 
+    const _stripDangerousAttrs = (attrString) => {
+        const unescaped = attrString
+            .replace(/&quot;/g, '"')
+            .replace(/&#039;/g, "'")
+            .replace(/&amp;/g, '&');
+        const allowed = /\s(style|class|title|id)\s*=\s*("[^"]*"|'[^']*')/gi;
+        let safe = '';
+        let m;
+        while ((m = allowed.exec(unescaped)) !== null) {
+            const val = m[2].slice(1, -1);
+            if (/javascript\s*:/i.test(val) || /expression\s*\(/i.test(val) || /url\s*\(/i.test(val)) continue;
+            safe += ` ${m[1]}=${m[2]}`;
+        }
+        return safe;
+    };
+
     const sanitizeHTML = (str) => {
         if (!str) return '';
         const escaped = escapeHTML(str);
@@ -126,21 +345,9 @@
             .replace(/&lt;code&gt;/g, '<code>')
             .replace(/&lt;\/code&gt;/g, '</code>')
             .replace(/&lt;br\s*\/?&gt;/g, '<br>')
-            .replace(/&lt;span(.*?)&gt;/g, (match, p1) => {
-                const unescapedAttrs = p1
-                    .replace(/&quot;/g, '"')
-                    .replace(/&#039;/g, "'")
-                    .replace(/&amp;/g, '&');
-                return `<span${unescapedAttrs}>`;
-            })
+            .replace(/&lt;span(.*?)&gt;/g, (match, p1) => `<span${_stripDangerousAttrs(p1)}>`)
             .replace(/&lt;\/span&gt;/g, '</span>')
-            .replace(/&lt;small(.*?)&gt;/g, (match, p1) => {
-                const unescapedAttrs = p1
-                    .replace(/&quot;/g, '"')
-                    .replace(/&#039;/g, "'")
-                    .replace(/&amp;/g, '&');
-                return `<small${unescapedAttrs}>`;
-            })
+            .replace(/&lt;small(.*?)&gt;/g, (match, p1) => `<small${_stripDangerousAttrs(p1)}>`)
             .replace(/&lt;\/small&gt;/g, '</small>');
     };
 
@@ -195,101 +402,256 @@
     if (!resolveBridgeNonce() && CONFIG.DEBUG) {
         BnLog('WARN', '[BananaBurner] Failed to resolve bridge nonce');
     }
+    //
+    const AsyncCache = {
+        dbName: 'BananaBurnerCache',
+        version: 1,
+        storeName: 'kv-store',
+        _db: null,
+        _maxKeyLen: 256,
+        _maxValueBytes: 10 * 1024 * 1024, // 10MB entry
+        _validateKey(key) {
+            if (typeof key !== 'string' || key.length === 0 || key.length > this._maxKeyLen) {
+                throw new Error(`AsyncCache: invalid key (must be string, 1-${this._maxKeyLen} chars)`);
+            }
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+                throw new Error('AsyncCache: forbidden key name');
+            }
+        },
+        async init() {
+            if (this._db) return this._db;
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(this.dbName, this.version);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(this.storeName)) {
+                        db.createObjectStore(this.storeName);
+                    }
+                };
+                req.onsuccess = () => { this._db = req.result; resolve(this._db); };
+                req.onerror = () => reject(req.error);
+            });
+        },
+        async set(key, value) {
+            this._validateKey(key);
+            const db = await this.init();
 
+            let safeValue = value;
+            if (value !== undefined) {
+                try {
+                    const stripProxy = (val, seen = new WeakMap()) => {
+                        if (val === null || typeof val !== 'object') {
+                            return val;
+                        }
+                        if (val instanceof Blob || val instanceof File || val instanceof ArrayBuffer || val instanceof Date || val instanceof RegExp) {
+                            return val;
+                        }
+                        if (seen.has(val)) {
+                            return seen.get(val);
+                        }
+                        if (Array.isArray(val)) {
+                            const copy = [];
+                            seen.set(val, copy);
+                            for (let i = 0; i < val.length; i++) {
+                                try {
+                                    copy[i] = stripProxy(val[i], seen);
+                                } catch (e) {
+                                    copy[i] = null;
+                                }
+                            }
+                            return copy;
+                        }
+                        const copy = {};
+                        seen.set(val, copy);
+                        try {
+                            for (const k of Object.keys(val)) {
+                                copy[k] = stripProxy(val[k], seen);
+                            }
+                        } catch (e) {
+                            console.warn('[BananaBurner] Failed to strip proxy properties', e);
+                        }
+                        return copy;
+                    };
+                    safeValue = stripProxy(value);
+                } catch (e) {
+                    console.warn('[BananaBurner] Failed to strip proxy from IDB value', e);
+                }
+            }
+
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(this.storeName, 'readwrite');
+                tx.objectStore(this.storeName).put(safeValue, key);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = () => reject(tx.error);
+            });
+        },
+        async get(key) {
+            this._validateKey(key);
+            const db = await this.init();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(this.storeName, 'readonly');
+                const req = tx.objectStore(this.storeName).get(key);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(tx.error);
+            });
+        },
+        async remove(key) {
+            this._validateKey(key);
+            const db = await this.init();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(this.storeName, 'readwrite');
+                tx.objectStore(this.storeName).delete(key);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = () => reject(tx.error);
+            });
+        },
+        async keys() {
+            const db = await this.init();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(this.storeName, 'readonly');
+                const req = tx.objectStore(this.storeName).getAllKeys();
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(tx.error);
+            });
+        },
+        async clear() {
+            const db = await this.init();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(this.storeName, 'readwrite');
+                tx.objectStore(this.storeName).clear();
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+    };
+    //
+    async function migrateLegacyInstalls() {
+        const keysToMigrate = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith('bh-plugin-code-') || key.startsWith('bh-market-item-'))) {
+                keysToMigrate.push(key);
+            }
+        }
+        if (keysToMigrate.length === 0) return;
+
+        BnLog('STARTUP', `[Installs] Migrating ${keysToMigrate.length} legacy items to IndexedDB...`);
+        for (const key of keysToMigrate) {
+            try {
+                const rawVal = localStorage.getItem(key);
+                if (rawVal) {
+                    let parsedVal = rawVal;
+                    if (key.startsWith('bh-market-item-')) {
+                        try { parsedVal = JSON.parse(rawVal); } catch (e) { }
+                    }
+                    await AsyncCache.set(key, parsedVal);
+                }
+                localStorage.removeItem(key);
+            } catch (e) {
+                BnLog('ERROR', `[Installs] Failed to migrate key ${key}:`, e);
+            }
+        }
+        BnLog('SUCCESS', '[Installs] Legacy storage migration complete.');
+    }
+    //
     window.__bh_cacheImage = async (url, expiry = 7 * 24 * 60 * 60 * 1000) => {
         const cacheKey = `bh-img-cache-${url}`;
-        const cached = localStorage.getItem(cacheKey);
 
-        if (cached) {
-            try {
-                const data = JSON.parse(cached);
-                const isFresh = (Date.now() - data.timestamp) < expiry;
-                if (isFresh) return data.dataUrl;
+        let cached = null;
+        try {
+            cached = await AsyncCache.get(cacheKey);
+        } catch (e) {
+            BnLog('ERROR', `Error reading image cache for key ${cacheKey}:`, e);
+        }
 
+        if (!cached) {
+            const lsCached = localStorage.getItem(cacheKey);
+            if (lsCached) {
+                localStorage.removeItem(cacheKey);
+            }
+        }
+
+        if (cached && cached.blob && (cached.blob instanceof Blob)) {
+            const isFresh = (Date.now() - cached.timestamp) < expiry;
+            if (isFresh) {
+                try {
+                    return URL.createObjectURL(cached.blob);
+                } catch (e) {
+                    BnLog('WARNING', `Failed to create object URL for cached blob, purging cache:`, e);
+                    try { await AsyncCache.remove(cacheKey); } catch (_) { }
+                }
+            } else {
                 (async () => {
                     try {
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 5000);
                         const resp = await fetch(url, { signal: controller.signal });
                         clearTimeout(timeoutId);
+                        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                         const blob = await resp.blob();
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            try {
-                                localStorage.setItem(cacheKey, JSON.stringify({
-                                    timestamp: Date.now(),
-                                    dataUrl: reader.result
-                                }));
-                            } catch (e) { }
-                        };
-                        reader.readAsDataURL(blob);
+                        if (blob && (blob instanceof Blob)) {
+                            await AsyncCache.set(cacheKey, { timestamp: Date.now(), blob });
+                        }
                     } catch (e) {
                         BnLog('INFO', `Avatar refresh failed, keeping stale cache: ${url}`);
                     }
                 })();
-                return data.dataUrl;
-            } catch (e) { localStorage.removeItem(cacheKey); }
+                try {
+                    return URL.createObjectURL(cached.blob);
+                } catch (e) {
+                    BnLog('WARNING', `Failed to create object URL from stale cached blob:`, e);
+                }
+            }
+        } else if (cached) {
+            BnLog('WARNING', `Purging corrupt cache entry for key ${cacheKey}`);
+            try { await AsyncCache.remove(cacheKey); } catch (_) { }
         }
-
 
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 8000);
             const response = await fetch(url, { signal: controller.signal });
             clearTimeout(timeoutId);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const blob = await response.blob();
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const dataUrl = reader.result;
-
-                    try {
-                        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), dataUrl }));
-                    } catch (storageErr) { }
-                    resolve(dataUrl);
-                };
-                reader.readAsDataURL(blob);
-            });
+            if (blob && (blob instanceof Blob)) {
+                await AsyncCache.set(cacheKey, { timestamp: Date.now(), blob });
+                return URL.createObjectURL(blob);
+            } else {
+                throw new Error('Fetched response did not yield a valid Blob');
+            }
         } catch (e) {
-            BnLog('INFO', `Initial image fetch failed: ${url}`);
+            BnLog('INFO', `Initial image fetch failed: ${url}`, e);
             return url;
         }
     };
 
-    window.__bh_gcImageCache = (forceAll = false) => {
+    window.__bh_gcImageCache = async (forceAll = false) => {
         try {
-            const cacheKeys = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && key.startsWith('bh-img-cache-')) {
-                    try {
-                        const data = JSON.parse(localStorage.getItem(key));
-                        cacheKeys.push({ key, timestamp: data.timestamp, size: localStorage.getItem(key).length });
-                    } catch (e) { localStorage.removeItem(key); }
-                }
+                if (key && key.startsWith('bh-img-cache-')) localStorage.removeItem(key);
             }
+
+            const keys = await AsyncCache.keys();
+            const imgKeys = keys.filter(k => k.startsWith('bh-img-cache-'));
+
             if (forceAll) {
-                cacheKeys.forEach(k => localStorage.removeItem(k.key));
+                for (const k of imgKeys) await AsyncCache.remove(k);
                 return;
             }
-            cacheKeys.sort((a, b) => a.timestamp - b.timestamp);
-            let removed = 0;
-            for (const item of cacheKeys) {
-                const isStale = (Date.now() - item.timestamp) > (7 * 24 * 60 * 60 * 1000);
-                if (isStale || cacheKeys.length - removed > 20) {
-                    localStorage.removeItem(item.key);
-                    removed++;
+
+            for (const key of imgKeys) {
+                try {
+                    const data = await AsyncCache.get(key);
+                    if (!data || !data.timestamp || typeof data.timestamp !== 'number' || (Date.now() - data.timestamp) > (7 * 24 * 60 * 60 * 1000)) {
+                        await AsyncCache.remove(key);
+                    }
+                } catch (e) {
+                    try { await AsyncCache.remove(key); } catch (_) { }
                 }
             }
         } catch (e) { }
-    };
-
-    window.__bh_getCachedImageSync = (url) => {
-        try {
-            const cached = localStorage.getItem(`bh-img-cache-${url}`);
-            if (cached) return JSON.parse(cached).dataUrl;
-        } catch (e) { }
-        return url;
     };
 
 
@@ -333,6 +695,277 @@
         'Pro': { coinsPerMonth: 600, ram: 4096, cpu: 150, storage: 6124, price: "5.20" },
         'Pro+': { coinsPerMonth: 900, ram: 6144, cpu: 200, storage: 6124, price: "7.90" }
     }; // *
+    //
+    class EventEmitter {
+        constructor() { this.listeners = {}; }
+        on(event, cb) { if (!this.listeners[event]) this.listeners[event] = []; this.listeners[event].push(cb); }
+        emit(event, data) { if (this.listeners[event]) this.listeners[event].forEach(cb => cb(data)); }
+    }
+
+    const _FORBIDDEN_PROPS = Object.freeze(new Set(['__proto__', 'constructor', 'prototype']));
+
+    function createReactiveStore(initialState) {
+        const emitter = new EventEmitter();
+        const cache = new WeakMap();
+        const handler = {
+            get(target, prop, receiver) {
+                if (prop === 'on') return emitter.on.bind(emitter);
+                if (prop === 'emit') return emitter.emit.bind(emitter);
+                if (prop === '__raw__') return target;
+                const value = Reflect.get(target, prop, receiver);
+                if (typeof value === 'object' && value !== null && (value.constructor === Object || value.constructor === Array)) {
+                    if (cache.has(value)) return cache.get(value);
+                    const proxy = new Proxy(value, handler);
+                    cache.set(value, proxy);
+                    return proxy;
+                }
+                return value;
+            },
+            set(target, prop, value, receiver) {
+                if (_FORBIDDEN_PROPS.has(prop)) {
+                    BnLog('WARN', `Blocked prototype-pollution attempt on prop: ${String(prop)}`);
+                    return true;
+                }
+                const oldVal = target[prop];
+                const success = Reflect.set(target, prop, value, receiver);
+                if (success && oldVal !== value) {
+                    emitter.emit('*', { prop, value, oldVal, target });
+                    emitter.emit(prop, value);
+                }
+                return success;
+            }
+        };
+        const rootProxy = new Proxy(initialState, handler);
+        cache.set(initialState, rootProxy);
+        return rootProxy;
+    }
+    //
+    class DOMUpdater {
+        static mergeStyles(oldStyle, newStyle) {
+            const styles = {};
+            const parse = (str) => {
+                if (!str) return;
+                str.split(';').forEach(decl => {
+                    const index = decl.indexOf(':');
+                    if (index > -1) {
+                        const key = decl.slice(0, index).trim();
+                        const val = decl.slice(index + 1).trim();
+                        if (key) styles[key] = val;
+                    }
+                });
+            };
+            parse(oldStyle);
+            const newStyles = {};
+            if (newStyle) {
+                newStyle.split(';').forEach(decl => {
+                    const index = decl.indexOf(':');
+                    if (index > -1) {
+                        const key = decl.slice(0, index).trim();
+                        const val = decl.slice(index + 1).trim();
+                        if (key) newStyles[key] = val;
+                    }
+                });
+            }
+            Object.keys(styles).forEach(key => {
+                if (!key.startsWith('--') && !(key in newStyles)) {
+                    delete styles[key];
+                }
+            });
+            Object.assign(styles, newStyles);
+            return Object.entries(styles)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join('; ');
+        }
+
+        static morph(oldNode, newNode) {
+            if (!oldNode) return newNode;
+            if (!newNode) {
+                oldNode.remove();
+                return null;
+            }
+
+            if (oldNode.nodeType === Node.ELEMENT_NODE) {
+                if (oldNode.hasAttribute('data-bh-ignore') || oldNode.closest('[data-bh-ignore]')) {
+                    return oldNode;
+                }
+            }
+
+            if (newNode.nodeType === Node.TEXT_NODE || newNode.nodeType === Node.COMMENT_NODE) {
+                if (oldNode.nodeType === newNode.nodeType) {
+                    if (oldNode.nodeValue !== newNode.nodeValue) {
+                        oldNode.nodeValue = newNode.nodeValue;
+                    }
+                    return oldNode;
+                } else {
+                    oldNode.replaceWith(newNode.cloneNode(true));
+                    return newNode;
+                }
+            }
+
+            if (oldNode.nodeType !== newNode.nodeType || oldNode.tagName !== newNode.tagName) {
+                oldNode.replaceWith(newNode.cloneNode(true));
+                return newNode;
+            }
+
+            const cleanChildren = (node) => {
+                if (!node || !node.childNodes) return;
+                const kids = Array.from(node.childNodes);
+                for (let i = 0; i < kids.length; i++) {
+                    const kid = kids[i];
+                    if (kid.nodeType === Node.TEXT_NODE && !kid.nodeValue.trim()) {
+                        kid.remove();
+                    }
+                }
+            };
+            cleanChildren(oldNode);
+            cleanChildren(newNode);
+
+            const oldAttrs = oldNode.attributes;
+            const newAttrs = newNode.attributes;
+
+            if (newAttrs) {
+                for (let i = 0; i < newAttrs.length; i++) {
+                    const attr = newAttrs[i];
+                    let val = attr.value;
+                    if (attr.name === 'class' && oldNode.classList.contains('context-menu-active')) {
+                        if (!val.split(/\s+/).includes('context-menu-active')) {
+                            val = (val + ' context-menu-active').trim();
+                        }
+                    }
+                    if (attr.name === 'class' && oldNode.id === 'bh-main-content') {
+                        if (!val.split(/\s+/).includes('main-content')) {
+                            val = ('main-content ' + val).trim();
+                        }
+                    }
+                    if (attr.name === 'class') {
+                        const normOld = (oldNode.getAttribute('class') || '').trim().replace(/\s+/g, ' ');
+                        const normNew = val.trim().replace(/\s+/g, ' ');
+                        if (normOld !== normNew) {
+                            oldNode.setAttribute(attr.name, normNew);
+                        }
+                    } else if (attr.name === 'style') {
+                        if (oldNode.id === 'bh-main-content') {
+                            continue;
+                        }
+                        if (oldNode.classList.contains('action-favicon') || oldNode.classList.contains('fa-link')) {
+                            continue;
+                        }
+                        const oldStyle = oldNode.getAttribute('style') || '';
+                        const mergedStyle = DOMUpdater.mergeStyles(oldStyle, val);
+                        const normOld = oldStyle.trim().replace(/\s+/g, ' ').replace(/;\s*$/, '');
+                        const normMerged = mergedStyle.trim().replace(/\s+/g, ' ').replace(/;\s*$/, '');
+                        if (normOld !== normMerged) {
+                            oldNode.setAttribute(attr.name, mergedStyle);
+                        }
+                    } else if (oldNode.getAttribute(attr.name) !== val) {
+                        if (attr.name === 'src' && oldNode.tagName === 'IMG') {
+                            try {
+                                const oldAbsolute = oldNode.src;
+                                const newAbsolute = new URL(val, window.location.origin).href;
+                                if (oldAbsolute === newAbsolute || decodeURIComponent(oldAbsolute) === decodeURIComponent(newAbsolute)) {
+                                    continue;
+                                }
+                            } catch (e) { }
+                        }
+
+                        if (attr.name.startsWith('on')) {
+                            const oldVal = (oldNode.getAttribute(attr.name) || '').trim().replace(/\s+/g, '').replace(/;$/, '');
+                            const newVal = val.trim().replace(/\s+/g, '').replace(/;$/, '');
+                            if (oldVal === newVal) {
+                                continue;
+                            }
+                        }
+
+                        oldNode.setAttribute(attr.name, val);
+                        if (attr.name === 'src' && oldNode.tagName === 'IMG') {
+                            oldNode.style.display = '';
+                            if (oldNode.nextElementSibling && oldNode.nextElementSibling.classList.contains('fa-link')) {
+                                oldNode.nextElementSibling.style.display = 'none';
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (oldAttrs) {
+                for (let i = oldAttrs.length - 1; i >= 0; i--) {
+                    const attr = oldAttrs[i];
+                    if (oldNode.id === 'bh-main-content' && (attr.name === 'id' || attr.name === 'style')) {
+                        continue;
+                    }
+                    if (!newNode.hasAttribute(attr.name)) {
+                        if (attr.name === 'class' && oldNode.classList.contains('context-menu-active')) {
+                            oldNode.setAttribute('class', 'context-menu-active');
+                        } else if (attr.name === 'style') {
+                            if (oldNode.classList.contains('action-favicon') || oldNode.classList.contains('fa-link')) {
+                                continue;
+                            }
+                            const oldStyle = oldNode.getAttribute('style') || '';
+                            const mergedStyle = DOMUpdater.mergeStyles(oldStyle, '');
+                            if (mergedStyle) {
+                                const normOld = oldStyle.trim().replace(/\s+/g, ' ').replace(/;\s*$/, '');
+                                const normMerged = mergedStyle.trim().replace(/\s+/g, ' ').replace(/;\s*$/, '');
+                                if (normOld !== normMerged) {
+                                    oldNode.setAttribute('style', mergedStyle);
+                                }
+                            } else {
+                                oldNode.removeAttribute('style');
+                            }
+                        } else {
+                            oldNode.removeAttribute(attr.name);
+                        }
+                    }
+                }
+            }
+
+            if (newNode.tagName === 'INPUT' || newNode.tagName === 'TEXTAREA' || newNode.tagName === 'SELECT') {
+                if (newNode.type === 'checkbox' || newNode.type === 'radio') {
+                    if (oldNode.checked !== newNode.checked) oldNode.checked = newNode.checked;
+                } else {
+                    if (oldNode.value !== newNode.value) oldNode.value = newNode.value;
+                }
+            }
+
+            if (oldNode.id === 'ad-placement' || oldNode.id === 'quick-actions-grid' || (oldNode.classList && oldNode.classList.contains('nitroly-ad'))) {
+                return oldNode;
+            }
+
+            const oldChildren = Array.from(oldNode.childNodes);
+            const newChildren = Array.from(newNode.childNodes);
+            const maxLength = Math.max(oldChildren.length, newChildren.length);
+
+            for (let i = 0; i < maxLength; i++) {
+                if (i >= oldChildren.length) {
+                    oldNode.appendChild(newChildren[i].cloneNode(true));
+                } else if (i >= newChildren.length) {
+                    oldChildren[i].remove();
+                } else {
+                    DOMUpdater.morph(oldChildren[i], newChildren[i]);
+                }
+            }
+
+            return oldNode;
+        }
+
+        static render(templateString, targetNode) {
+            const template = document.createElement('template');
+            template.innerHTML = templateString.trim();
+
+            const oldChildren = Array.from(targetNode.childNodes);
+            const newChildren = Array.from(template.content.childNodes);
+            const maxLength = Math.max(oldChildren.length, newChildren.length);
+
+            for (let i = 0; i < maxLength; i++) {
+                if (i >= oldChildren.length) {
+                    targetNode.appendChild(newChildren[i].cloneNode(true));
+                } else if (i >= newChildren.length) {
+                    oldChildren[i].remove();
+                } else {
+                    DOMUpdater.morph(oldChildren[i], newChildren[i]);
+                }
+            }
+        }
+    }
     //
     const _ls = (() => {
         const keys = [
@@ -386,12 +1019,13 @@
         };
     })();
     //
-    let state = {
+    let state = createReactiveStore({
         loadTime: Date.now(),
         lastFileRefresh: 0,
         fbRefreshing: false,
         currentView: 'dashboard',
         extensionPresent: false,
+        isBetaTester: false,
         theme: _ls.get('banana-theme') || 'system',
         devMode: _ls.get('bh-dev-mode') === 'true' || false,
         user: null,
@@ -485,11 +1119,13 @@
             showAds: localStorage.getItem('bh-show-ads') !== 'false',
             autoConnectConsole: _ls.json('bh-auto-connect-console', true),
             customTheme: _ls.json('bh-custom-theme', null),
+            frost: _ls.json('bh-frost', false),
             soundPack: _ls.get('bh-sound-pack') || 'default',
             cornerRadius: _ls.int('bh-corner-radius', 19),
             vfsEnabled: _ls.json('bh-vfs-enabled', true),
             borderWidth: _ls.float('bh-border-width', 1),
             popupBlur: _ls.int('bh-popup-blur', 8),
+            fontPrimary: _ls.get('bh-font-primary') || 'default',
             fontSecondary: _ls.get('bh-font-secondary') || 'default',
             consoleFont: _ls.get('bh-console-font') || 'default',
             customPrimaryFont: _ls.get('bh-custom-font-primary') || '',
@@ -566,9 +1202,43 @@
             highestCreationTime: 0,
             totalCreationTime: 0
         })
-    };
+    });
 
-    state.serverDetailsCache = _ls.json('bh-server-details-cache', {});
+    state.serverDetailsCache = {};
+    state.loadingServerId = null;
+
+    let _renderDebounce = null;
+    let _renderTimestamps = [];
+    state.on('*', ({ prop }) => {
+        if (!state.mainAppInitialized) return;
+
+        if (isNaN(prop)) {
+            const now = Date.now();
+            _renderTimestamps.push(now);
+            _renderTimestamps = _renderTimestamps.filter(t => now - t < 1000);
+            if (_renderTimestamps.length > 2000) {
+                console.error(`[ReactiveSystem] Render loop detected! Suspect property: ${String(prop)}. Halting auto-render.`);
+                return;
+            }
+        }
+
+        if (_renderDebounce) cancelAnimationFrame(_renderDebounce);
+        _renderDebounce = requestAnimationFrame(() => {
+            if (typeof refreshUI === 'function') {
+                refreshUI(false);
+            }
+        });
+    });
+    const _marketFetchTimestamps = { themes: 0, plugins: 0, local: 0 };
+
+    state.on('currentView', (view) => {
+        if (view !== 'market') return;
+        const tab = state.market.currentSubTab || 'themes';
+        const lastFetch = _marketFetchTimestamps[tab] || 0;
+        if (!state.market.loading && Date.now() - lastFetch > state.market.cacheExpiry) {
+            setTimeout(() => fetchMarketData(), 0);
+        }
+    });
 
     window.addEventListener('beforeunload', (e) => {
         if (state.editorActive || state.isDeploying || state.isUploading) {
@@ -913,16 +1583,20 @@
 
     function applyFontSettings() {
         const root = document.documentElement;
-        const fontPrimary = state.settings.fontPrimary === 'custom' ? state.settings.customPrimaryFont : (FONT_OPTIONS[state.settings.fontPrimary] || FONT_OPTIONS.default);
-        const fontSecondary = state.settings.fontSecondary === 'custom' ? state.settings.customSecondaryFont : (FONT_OPTIONS[state.settings.fontSecondary] || FONT_OPTIONS.default);
+        const pFontKey = (state.settings.fontPrimary || 'default').toLowerCase();
+        const sFontKey = (state.settings.fontSecondary || 'default').toLowerCase();
+
+        const fontPrimary = pFontKey === 'custom' ? state.settings.customPrimaryFont : (FONT_OPTIONS[pFontKey] || FONT_OPTIONS.default);
+        const fontSecondary = sFontKey === 'custom' ? state.settings.customSecondaryFont : (FONT_OPTIONS[sFontKey] || FONT_OPTIONS.default);
         root.style.setProperty('--font-primary', fontPrimary);
         root.style.setProperty('--font-secondary', fontSecondary);
 
         let consoleFontValue;
-        if (state.settings.consoleFont === 'default') {
+        const cFontKey = (state.settings.consoleFont || 'default').toLowerCase();
+        if (cFontKey === 'default') {
             consoleFontValue = "'Consolas', 'Monaco', 'Courier New', monospace";
         } else {
-            const preset = FONT_OPTIONS[state.settings.consoleFont];
+            const preset = FONT_OPTIONS[cFontKey];
             consoleFontValue = preset ? `${preset}, Consolas, monospace` : `${state.settings.consoleFont}, Consolas, monospace`;
         }
 
@@ -1050,7 +1724,7 @@
                 const { clientX: x, clientY: y } = e;
                 const selectors = `
           .stat-card, .module-card, .bh-container, .nav-item, .action-btn, 
-          .recent-activity, .quick-actions, .bananaa-modal, .bananaa-captcha-modal,
+          .recent-activity, .quick-actions, 
           .server-item, .activity-item, .plan-card, .module-header,
           .form-input, .form-select, .btn, .user-profile, .setting-item,
           .sftp-current, .modal-container, .profile-tab, .quick-action-card
@@ -1084,8 +1758,6 @@
       .cursor-glow-enabled .action-btn,
       .cursor-glow-enabled .recent-activity,
       .cursor-glow-enabled .quick-actions,
-      .cursor-glow-enabled .bananaa-modal,
-      .cursor-glow-enabled .bananaa-captcha-modal,
       .cursor-glow-enabled .server-item,
       .cursor-glow-enabled .activity-item,
       .cursor-glow-enabled .plan-card,
@@ -1110,18 +1782,7 @@
         transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s, opacity 0.3s, background 0s !important;
       }
 
-      .cursor-glow-enabled .bh-nav {
-        border: 1px solid transparent !important;
-        background-clip: padding-box, border-box !important;
-        background-origin: border-box !important;
-        background-color: transparent !important;
-        background-image: 
-          linear-gradient(var(--bg-secondary), var(--bg-secondary)), 
-          radial-gradient(300px circle at var(--mouse-x) var(--mouse-y), var(--cursor-glow-color), transparent 80%) !important;
-        margin: -1px -1px 0 -1px !important;
-        width: calc(100% + 2px) !important;
-        transition: background 0s !important;
-      }
+
       
       .cursor-glow-enabled .bh-container {
         pointer-events: auto;
@@ -1208,6 +1869,23 @@
         display: flex;
         align-items: center;
         gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 600px) {
+        .recent-activity .section-header {
+          flex-direction: column;
+          align-items: stretch !important;
+          gap: 1rem;
+        }
+        .recent-activity .section-header-actions {
+          justify-content: space-between;
+          width: 100%;
+        }
+        .recent-activity .filter-pill-container {
+          flex: 1;
+          justify-content: center;
+        }
       }
 
 
@@ -1273,7 +1951,7 @@
 
     //
     const ICON_MAPPING = {
-        'dashboard': { src: 'https://cdn.lordicon.com/ewtxwele.json', fallback: 'fa-chart-pie', in: 'in-reveal' },
+        'dashboard': { src: 'https://cdn.lordicon.com/ewtxwele.json', fallback: 'fa-chart-pie', in: 'in-reveal', hover: 'hover-fold' },
         'coins': { src: 'https://cdn.lordicon.com/ahudpsun.json', fallback: 'fa-coins', in: 'in-pig' },
         'servers': { src: 'https://cdn.lordicon.com/efxgwrkc.json', fallback: 'fa-rocket', in: 'in-add-card' },
         'manage': { src: 'https://cdn.lordicon.com/umuwriak.json', fallback: 'fa-cogs', in: 'in-cog' },
@@ -1494,14 +2172,9 @@
 
             if (iconId === 'manage' || iconId === 'settings') {
                 icon.setAttribute('trigger', 'loop');
-            } else if (iconId === 'dashboard') {
-                icon.setAttribute('state', 'hover-fold');
+            } else {
+                if (iconId === 'dashboard') icon.setAttribute('state', 'hover-fold');
                 playIconFromStart(icon);
-                setTimeout(() => {
-                    if (icon.getAttribute('state') === 'hover-fold') {
-                        icon.removeAttribute('state');
-                    }
-                }, 1000);
             }
         });
 
@@ -1571,7 +2244,9 @@
                                 const player = icon.playerInstance;
                                 if (player) {
                                     player.addEventListener('complete', () => {
-                                        if (iconId === 'wiki') {
+                                        if (config.hover) {
+                                            icon.setAttribute('state', config.hover);
+                                        } else if (iconId === 'wiki') {
                                             icon.setAttribute('state', 'hover-book');
                                         } else {
                                             icon.removeAttribute('state');
@@ -1583,7 +2258,8 @@
 
                             setTimeout(() => {
                                 if (!icon.hasAttribute('trigger')) {
-                                    if (iconId === 'wiki') icon.setAttribute('state', 'hover-book');
+                                    if (config.hover) icon.setAttribute('state', config.hover);
+                                    else if (iconId === 'wiki') icon.setAttribute('state', 'hover-book');
                                     else icon.removeAttribute('state');
                                     icon.setAttribute('trigger', 'hover');
                                 }
@@ -1719,7 +2395,7 @@
             { label: 'Total Time spent creating servers', value: formatTime(state.stats.totalCreationTime || 0), icon: 'fa-hourglass-half' }
         ];
 
-        grid.innerHTML = statsConfig.map((stat, i) => `
+        DOMUpdater.render(statsConfig.map((stat, i) => `
       <div class="stat-item-box">
         <div class="stat-item-label">
           <i class="fas ${stat.icon}"></i>
@@ -1727,7 +2403,7 @@
         </div>
         <div class="stat-item-value">${stat.value}</div>
       </div>
-    `).join('');
+    `).join(''), grid);
     };
 
     function loadCoinProgress() {
@@ -1760,11 +2436,10 @@
 
     function updateCaptchaPRD() {
         const count = state.coinCollector.coinsCollected;
-        if (count === 0 || count === 4 || count === 9) {
-            state.coinCollector.nextCoinRequiresCaptcha = true;
-        }
+        const next = count + 1;
+        state.coinCollector.nextCoinRequiresCaptcha = (next === 1 || next === 5 || next === 10);
+        BnLog('DEBUG', `CoinCollector: Count=${count}, NextCoin=${next}, RequiresCaptcha=${state.coinCollector.nextCoinRequiresCaptcha}`);
     }
-
     function rgbToHex(rgb) {
         if (!rgb) return '#000000';
         if (rgb.startsWith('#')) return rgb;
@@ -1777,6 +2452,12 @@
     }
 
     function applyCustomTheme() {
+        if (state.settings.frost) {
+            document.body.classList.add('frost-enabled');
+        } else {
+            document.body.classList.remove('frost-enabled');
+        }
+
         if (!state.settings.customTheme) return;
         const root = document.documentElement;
         Object.entries(state.settings.customTheme).forEach(([key, value]) => {
@@ -1826,6 +2507,7 @@
             }
         } else {
             state.settings.customTheme = null;
+            state.settings.frost = false;
             state.settings.themeTitle = 'BananaBurner 2979';
             state.settings.themeBackgroundImage = '';
             state.settings.themeAuthor = '';
@@ -1872,6 +2554,7 @@
             _ls.remove('bh-splash-v2');
             _ls.remove('bh-gradient-bg');
             _ls.set('bh-sound-pack', 'default');
+            _ls.set('bh-frost', 'false');
             _ls.set('bh-cursor-glow', 'false');
             _ls.set('bh-cursor-glow-color', 'rgba(34, 211, 238, 0.3)');
             _ls.remove('bh-active-theme-id');
@@ -1915,6 +2598,7 @@
                 themeTitle: state.settings.themeTitle || 'BananaBurner 2979',
                 themeBackgroundImage: state.settings.themeBackgroundImage || '',
                 theme: state.theme,
+                frost: !!state.settings.frost,
                 autoConnectConsole: state.settings.autoConnectConsole,
                 customTheme: state.settings.customTheme,
                 cornerRadius: state.settings.cornerRadius,
@@ -2044,6 +2728,11 @@
                             if (data.theme) {
                                 state.theme = data.theme;
                                 localStorage.setItem('banana-theme', data.theme);
+                            }
+
+                            if (data.frost !== undefined) {
+                                state.settings.frost = !!data.frost;
+                                localStorage.setItem('bh-frost', data.frost);
                             }
 
                             if (data.customTheme !== undefined) {
@@ -2500,7 +3189,7 @@
                     wrapper.style.width = '1em';
                     wrapper.style.height = '1em';
                     wrapper.style.verticalAlign = 'middle';
-                    wrapper.innerHTML = getBananaAsset(16);
+                    DOMUpdater.render(getBananaAsset(16), wrapper);
                     icon.parentNode.replaceChild(wrapper, icon);
                 }
             }
@@ -2588,7 +3277,7 @@
         toast.className = `bh-toast bh-toast-${type}`;
         toast.dataset.position = position;
 
-        toast.innerHTML = `
+        DOMUpdater.render(`
       <div class="toast-icon">
         <i class="${icons[type]}"></i>
       </div>
@@ -2598,7 +3287,7 @@
       <button class="toast-close">
         <i class="fas fa-times"></i>
       </button>
-    `;
+    `, toast);
 
         const existingInCorner = Array.from(document.querySelectorAll('.bh-toast'))
             .filter(t => (t.dataset.position || 'bottom-right') === position);
@@ -2771,7 +3460,6 @@
         }
 
         if (state.apiStatus !== prevStatus) {
-            updateDashboard();
             updateServerManagement();
         }
     }
@@ -2914,7 +3602,7 @@
                 state.coinCollector.resetTimerInterval = null;
                 updateCoinCollectorUI();
                 if (state.currentView === 'coins') {
-                    checkCoinStatus();
+                    checkCoinStatus(true);
                 }
             }
         }, 1000);
@@ -2934,7 +3622,7 @@
 
             const container = document.createElement('div');
             container.id = 'bh-security-confirm';
-            container.innerHTML = `
+            DOMUpdater.render(`
                 <div class="sc-morph-bg">
                     <div class="blob blob-1"></div>
                     <div class="blob blob-2"></div>
@@ -3014,7 +3702,7 @@ debug:
                         <button id="sc-telemetry-popup-close" style="width:100%; padding:0.6rem; background:rgba(255,255,255,0.1); border:none; border-radius:8px; color:#fff; cursor:pointer; font-size:0.9em; margin-top:0.5rem;">Alright</button>
                     </div>
                 </div>
-            `;
+            `, container);
             document.body.appendChild(container);
 
             const confirmBtn = container.querySelector('.sc-confirm-btn');
@@ -3085,14 +3773,14 @@ debug:
             };
 
             denyBtn.onclick = () => {
-                container.innerHTML = `
+                DOMUpdater.render(`
                     <div class="sc-morph-bg"><div class="blob blob-1"></div></div>
                     <div class="sc-content">
                         <h1 class="sc-title">Monkey see no evil</h1>
                         <p class="sc-text">The script has been terminated..</p>
                         <p class="sc-subtext">You can disable the extension or userscript to continue with the normal panel.</p>
                     </div>
-                `;
+                `, container);
                 reject('Security confirmation denied');
             };
         });
@@ -3399,8 +4087,7 @@ debug:
                 scrollbar-width: none;
                 -ms-overflow-style: none;
             }
-            
-            .sc-no-scroll::-webkit-scrollbar {
+.sc-no-scroll::-webkit-scrollbar {
                 display: none;
             }
         `;
@@ -3408,10 +4095,17 @@ debug:
     }
 
 
-    function showSplashScreen() {
+    async function showSplashScreen(onProgress) {
 
         if (state.splashShown) return;
         state.splashShown = true;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const isSyncing = urlParams.has('telemetryToken');
+        if (isSyncing && onProgress) {
+            onProgress('Syncing Identity with Marketplace...');
+            await new Promise(r => setTimeout(r, 450));
+        }
 
         document.body.style.overflow = 'hidden';
         document.documentElement.style.overflow = 'hidden';
@@ -3425,7 +4119,7 @@ debug:
         splash.id = 'bh-splash';
         if (state.settings.splashV2) splash.classList.add('splash-v2');
 
-        splash.innerHTML = `
+        DOMUpdater.render(`
       ${!state.settings.splashV2 ? `
         <div class="splash-background">
           <div class="gradient-orbs">
@@ -3475,12 +4169,14 @@ debug:
           `}
         </div>
       </div>
-    `;
+    `, splash);
 
         document.body.appendChild(splash);
 
         createMainOverlay();
         const mainOverlay = document.getElementById('bh-overlay');
+        if (mainOverlay) mainOverlay.style.opacity = '0';
+
         if (mainOverlay) {
             mainOverlay.style.opacity = '0';
         }
@@ -3488,13 +4184,14 @@ debug:
         splash.offsetHeight;
 
         (async () => {
-            while (!state.mainAppInitialized) {
+            while (!state.mainAppInitialized || state.isRedirectingToAuth) {
                 await new Promise(r => setTimeout(r, 100));
             }
 
+            if (state.isRedirectingToAuth) return;
+
             const progressText = splash.querySelector(state.settings.splashV2 ? '.v2-text' : '.progress-text');
             const progressFill = splash.querySelector('.progress-fill');
-            if (progressText) progressText.textContent = 'Banana-core READY!!!';
             if (progressFill) progressFill.style.width = '100%';
 
             await new Promise(r => setTimeout(r, 600));
@@ -3550,6 +4247,22 @@ debug:
     }
 
     function addbananaaSplashStyles() {
+        if (document.getElementById('splash-styles')) return;
+        const pFontKey = (state.settings.fontPrimary || 'default').toLowerCase();
+        const sFontKey = (state.settings.fontSecondary || 'default').toLowerCase();
+
+        let primaryCSS = '';
+        if (pFontKey !== 'default') {
+            const fontPrimary = pFontKey === 'custom' ? state.settings.customPrimaryFont : (FONT_OPTIONS[pFontKey] || FONT_OPTIONS.default);
+            primaryCSS = `font-family: ${fontPrimary} !important;`;
+        }
+
+        let secondaryCSS = '';
+        if (sFontKey !== 'default') {
+            const fontSecondary = sFontKey === 'custom' ? state.settings.customSecondaryFont : (FONT_OPTIONS[sFontKey] || FONT_OPTIONS.default);
+            secondaryCSS = `font-family: ${fontSecondary} !important;`;
+        }
+
         const style = document.createElement('style');
         style.id = 'splash-styles';
         style.textContent = `
@@ -3655,6 +4368,7 @@ debug:
       }
 
       .v2-text {
+        ${secondaryCSS}
         font-size: 1rem;
         font-weight: 600;
         color: white;
@@ -3894,6 +4608,7 @@ debug:
       }
       
       .splash-title {
+        ${primaryCSS}
         font-size: 3rem;
         font-weight: 800;
         margin-bottom: 0.5rem;
@@ -3926,6 +4641,7 @@ debug:
       }
       
       .splash-subtitle {
+        ${secondaryCSS}
         font-size: 1.1rem;
         color: rgba(255, 255, 255, 0.7);
         margin-bottom: 2rem;
@@ -3977,6 +4693,7 @@ debug:
       }
       
       .progress-text {
+        ${secondaryCSS}
         font-size: 0.85rem;
         color: rgba(255, 255, 255, 0.6);
         font-weight: 400;
@@ -4037,6 +4754,28 @@ debug:
         100% {left: 100%; }
       }
 
+      
+      .bh-spinner {
+        animation: bh-rotate 2s linear infinite;
+        width: 1.9em;
+        height: 1.9em;
+        display: inline-block;
+        vertical-align: middle;
+      }
+      .bh-spinner .path {
+        stroke: currentColor;
+        stroke-linecap: round;
+        animation: bh-dash 1.5s ease-in-out infinite;
+      }
+      @keyframes bh-rotate {
+        100% { transform: rotate(360deg); }
+      }
+      @keyframes bh-dash {
+        0% { stroke-dasharray: 30, 150; stroke-dashoffset: 0; }
+        50% { stroke-dasharray: 90, 150; stroke-dashoffset: -35; }
+        100% { stroke-dasharray: 30, 150; stroke-dashoffset: -124; }
+      }
+
       @keyframes pulse-green {
         0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
         70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
@@ -4059,7 +4798,7 @@ debug:
 
     async function initializeMainApp(onProgress) {
         const osrc = localStorage.getItem('OSRC') === 'true';
-        StartupCleanup();
+        await StartupCleanup();
         SoundManager.init();
         loadCoinProgress();
         applyTheme(state.theme);
@@ -4067,36 +4806,6 @@ debug:
         setupEasterEggs();
         initAprilFools();
         setupShortcutListeners();
-
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
-        const affiliate = params.get('affiliate') || params.get('aff') || "";
-
-        if (code && (osrc == true || osrc == "true")) {
-            if (onProgress) onProgress('Logging in...');
-            try {
-                const response = await fetch('https://bot-hosting.net/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code, affiliate })
-                });
-
-                if (!response.ok) throw new Error('Login failed');
-
-                const data = await response.json();
-                if (data.token) {
-                    localStorage.setItem('token', data.token);
-                    const newUrl = window.location.pathname + window.location.search.replace(/[?&]code=[^&]+/, '').replace(/^&/, '?');
-                    window.history.replaceState({}, '', newUrl);
-                } else {
-                    throw new Error('No token returned');
-                }
-            } catch (e) {
-                BnLog('ERROR', 'login failed:', e);
-                window.location.href = 'https://bot-hosting.net/login';
-                return;
-            }
-        }
 
         if (state.coinCollector.bananaMode) {
             document.body.classList.add('banana-mode');
@@ -4127,13 +4836,13 @@ debug:
         await new Promise(r => setTimeout(r, 150));
 
         if (onProgress) onProgress('Fetching User Profile...');
-        await fetchUserData();
+        await fetchUserData(!!onProgress);
 
         if (onProgress) onProgress('STEALING BANANAS!');
         await new Promise(r => setTimeout(r, 150));
 
         if (onProgress) onProgress('Loading Server List...');
-        await fetchServers();
+        await fetchServers(!!onProgress);
 
         const syncCP = async () => {
             try {
@@ -4163,8 +4872,7 @@ debug:
             await fetchTransactions(true);
         }
 
-        if (onProgress) onProgress('Banana-core READY!!!');
-        await new Promise(r => setTimeout(r, 150));
+
 
         const backgroundInterval = osrc ? 30000 : 120000;
         const resourcesInterval = osrc ? 45000 : 120000;
@@ -4174,7 +4882,9 @@ debug:
             if (state.editorActive) return;
             checkControlPanelStatus();
         }, backgroundInterval);
-        autoLoadPlugins();
+        if (onProgress) onProgress('Loading plugins...');
+        await migrateLegacyInstalls();
+        await autoLoadPlugins();
         checkVersionAndShowChangelog();
 
         setInterval(() => {
@@ -4214,13 +4924,22 @@ debug:
             } catch (e) { state.controlPanelStatus = 'down'; }
         }, 30000);
 
+        if (onProgress) onProgress('Creating Marketplace session...');
+        if (await bbAuth(onProgress)) return;
         //showToast('BananaBurner 2979 ready!', 'success');
+        if (onProgress) onProgress('Banana-core READY!!!');
+        if (window.__bh_pending_toast) {
+            showToast(window.__bh_pending_toast, 'error');
+            delete window.__bh_pending_toast;
+        }
+        await new Promise(r => setTimeout(r, 150));
     }
 
     function getHeaders() {
+        const token = localStorage.getItem('token') || '';
+        const sanitizedToken = typeof token === 'string' ? token.replace(/[^\x20-\x7E]/g, '') : '';
         return {
-            'Authorization': localStorage.getItem('token') || '',
-            'Cookie': document.cookie,
+            'Authorization': sanitizedToken,
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         };
@@ -4742,11 +5461,11 @@ debug:
                                         state.controlPanel.websocket.logs = [truncationNotice, ...historyLines];
                                         if (document.querySelector('.console-body')) {
                                             const cb = document.querySelector('.console-body');
-                                            cb.innerHTML = '';
+                                            DOMUpdater.render('', cb);
                                             state.controlPanel.websocket.logs.forEach(line => {
                                                 const el = document.createElement('div');
                                                 el.className = 'console-line notranslate';
-                                                el.innerHTML = line;
+                                                DOMUpdater.render(line, el);
                                                 cb.appendChild(el);
                                             });
                                         }
@@ -5068,13 +5787,13 @@ debug:
         const originalHtml = btn ? btn.innerHTML : '';
 
         powerBtns.forEach(b => b.disabled = true);
-        if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        if (btn) DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>', btn);
 
         try {
             await sendServerSignal(identifier, signal);
         } finally {
             setTimeout(() => {
-                if (btn) btn.innerHTML = originalHtml;
+                if (btn) DOMUpdater.render(originalHtml, btn);
                 refreshServerDetailsModalResources(identifier);
             }, 1000);
         }
@@ -5092,11 +5811,11 @@ debug:
             if (pipConsole) {
                 if (isOverwrite) {
                     const lastPipLine = pipConsole.lastElementChild;
-                    if (lastPipLine) lastPipLine.innerHTML = lastLog;
+                    if (lastPipLine) DOMUpdater.render(lastLog, lastPipLine);
                 } else {
                     const pipLine = state.pipWindow.document.createElement('div');
                     pipLine.className = 'console-line notranslate';
-                    pipLine.innerHTML = lastLog;
+                    DOMUpdater.render(lastLog, pipLine);
                     pipConsole.appendChild(pipLine);
                     if (pipConsole.children.length > 500) {
                         pipConsole.removeChild(pipConsole.firstChild);
@@ -5119,12 +5838,12 @@ debug:
         if (isOverwrite) {
             const lastLine = consoleBody.lastElementChild;
             if (lastLine) {
-                lastLine.innerHTML = lastLog;
+                DOMUpdater.render(lastLog, lastLine);
             }
         } else {
             const line = document.createElement('div');
             line.className = 'console-line notranslate';
-            line.innerHTML = lastLog;
+            DOMUpdater.render(lastLog, line);
             consoleBody.appendChild(line);
 
             if (consoleBody.children.length > 500) {
@@ -5217,11 +5936,11 @@ debug:
 
             const pipConsoleBody = consoleContainer.querySelector('.console-body');
             if (pipConsoleBody && state.controlPanel.websocket.logs.length > 0) {
-                pipConsoleBody.innerHTML = '';
+                DOMUpdater.render('', pipConsoleBody);
                 state.controlPanel.websocket.logs.forEach(log => {
                     const line = document.createElement('div');
                     line.className = 'console-line notranslate';
-                    line.innerHTML = log;
+                    DOMUpdater.render(log, line);
                     pipConsoleBody.appendChild(line);
                 });
             }
@@ -5237,7 +5956,7 @@ debug:
 
             pipWindow.addEventListener('pagehide', () => {
                 state.pipWindow = null;
-                showToast('PiP Console closed', 'info');
+                //showToast('PiP Console closed', 'info');
             });
 
         } catch (err) {
@@ -5319,11 +6038,11 @@ debug:
             modal.classList.add('has-console');
             const consoleBody = modal.querySelector('.console-body');
             if (consoleBody && consoleBody.children.length === 0 && state.controlPanel.websocket.logs.length > 0) {
-                consoleBody.innerHTML = '';
+                DOMUpdater.render('', consoleBody);
                 state.controlPanel.websocket.logs.forEach(log => {
                     const el = document.createElement('div');
                     el.className = 'console-line notranslate';
-                    el.innerHTML = log;
+                    DOMUpdater.render(log, el);
                     consoleBody.appendChild(el);
                 });
                 consoleBody.scrollTop = consoleBody.scrollHeight;
@@ -5342,12 +6061,12 @@ debug:
         if (stopBtn) {
             if (isStuckRunning || isActuallyKilling) {
                 stopBtn.classList.add('kill');
-                stopBtn.innerHTML = '<i class="fas fa-skull"></i> <span>Kill</span>';
+                DOMUpdater.render('<i class="fas fa-skull"></i> <span>Kill</span>', stopBtn);
                 stopBtn.setAttribute('onclick', `handlePowerAction('${identifier}', 'kill', this)`);
                 stopBtn.title = isActuallyKilling ? "Killing server..." : "Force kill the server";
             } else {
                 stopBtn.classList.remove('kill');
-                stopBtn.innerHTML = '<i class="fas fa-stop"></i> <span>Stop</span>';
+                DOMUpdater.render('<i class="fas fa-stop"></i> <span>Stop</span>', stopBtn);
                 stopBtn.setAttribute('onclick', `handlePowerAction('${identifier}', 'stop', this)`);
                 stopBtn.title = "Click twice to force kill";
             }
@@ -5362,7 +6081,7 @@ debug:
         const resourcesContainer = modal.querySelector('.resources-card');
         if (resourcesContainer) {
             if (resources.is_installing || resources.is_transferring) {
-                resourcesContainer.innerHTML = `<div style="display: flex; align-items: center; gap: 0.75rem; color: var(--accent-warning); justify-content: center; padding: 1rem;"><i class="fas fa-spinner fa-spin"></i><span style="font-weight: 600;">Server is currently ${resources.is_installing ? 'installing' : 'being transferred'}...</span></div>`;
+                DOMUpdater.render(`<div style="display: flex; align-items: center; gap: 0.75rem; color: var(--accent-warning); justify-content: center; padding: 1rem;"><svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg><span style="font-weight: 600;">Server is currently ${resources.is_installing ? 'installing' : 'being transferred'}...</span></div>`, resourcesContainer);
             } else {
                 const items = resourcesContainer.querySelectorAll('.metric-item div');
                 if (items.length >= 6) {
@@ -5385,9 +6104,9 @@ debug:
             wsStatusBtn.className = `ws-status-toggle cp-only ${isConnected ? 'connected' : ''} ${isConnecting ? 'connecting' : ''}`;
 
             if (isConnecting) {
-                wsStatusBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>', wsStatusBtn);
             } else {
-                wsStatusBtn.innerHTML = isConnected ? '<i class="fas fa-plug-circle-check"></i>' : '<i class="fas fa-plug-circle-xmark"></i>';
+                DOMUpdater.render(isConnected ? '<i class="fas fa-plug-circle-check"></i>' : '<i class="fas fa-plug-circle-xmark"></i>', wsStatusBtn);
             }
 
             let display = 'none';
@@ -5414,10 +6133,11 @@ debug:
         const CACHE_DURATION = 60000;
 
         const cached = _ls.json(CACHE_KEY, null);
+        BnLog('INFO', `fetchUserData: force=${force}, cached=${!!cached}`);
         if (!force && cached && cached.timestamp && (Date.now() - cached.timestamp < CACHE_DURATION)) {
             state.user = cached.data;
             state.coinCollector.currentCoins = state.user.coins || 0;
-            loadActivityCache();
+            await loadActivityCache();
             loadStats();
             loadCoinProgress();
             updateUserProfile();
@@ -5427,7 +6147,8 @@ debug:
         const prevCoins = state.coinCollector.currentCoins;
         const prevStatus = state.apiStatus;
         try {
-            const response = await fetchWithRetry('/api/me', {
+            const url = force ? `/api/me?_=${Date.now()}` : '/api/me';
+            const response = await fetchWithRetry(url, {
                 method: 'GET',
                 headers: getHeaders()
             });
@@ -5440,40 +6161,48 @@ debug:
 
                 _ls.set(CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
 
-                loadActivityCache();
+                await loadActivityCache();
                 loadStats();
                 loadCoinProgress();
 
                 if (state.coinCollector.currentCoins !== prevCoins || state.apiStatus !== prevStatus) {
-                    updateDashboard();
+
                 }
                 updateUserProfile();
                 return state.user;
             } else {
                 state.apiStatus = 'down';
-                if (state.apiStatus !== prevStatus) updateDashboard();
+                if (state.apiStatus !== prevStatus) { }
             }
         } catch (error) {
             BnLog('ERROR', 'Failed to fetch user data:', error);
             state.apiStatus = 'down';
-            if (state.apiStatus !== prevStatus) updateDashboard();
+            if (state.apiStatus !== prevStatus) { }
         }
         return null;
     }
 
-    function loadActivityCache() {
+    async function loadActivityCache() {
         if (!state.user || !state.user.id) return;
         const key = `bh-activity-cache-${state.user.id}`;
-        let cached = _ls.json(key, null);
 
-        if (cached === null) {
-            const legacy = _ls.json('bh-activity-cache', []);
-            if (legacy && legacy.length > 0) {
-                BnLog('INFO', `Migrating ${legacy.length} legacy activity items to user ${state.user.id}`);
-                cached = legacy;
-                _ls.set(key, JSON.stringify(cached));
+        let cached = await AsyncCache.get(key);
+
+        if (!cached) {
+            const lsCached = _ls.json(key, null);
+            if (lsCached) {
+                cached = lsCached;
+                await AsyncCache.set(key, cached);
+                localStorage.removeItem(key);
             } else {
-                cached = [];
+                const legacy = _ls.json('bh-activity-cache', []);
+                if (legacy && legacy.length > 0) {
+                    BnLog('INFO', `Migrating ${legacy.length} legacy activity items to user ${state.user.id}`);
+                    cached = legacy;
+                    await AsyncCache.set(key, cached);
+                } else {
+                    cached = [];
+                }
             }
         }
 
@@ -5487,7 +6216,7 @@ debug:
     function saveActivityCache() {
         if (!state.user || !state.user.id) return;
         const key = `bh-activity-cache-${state.user.id}`;
-        _ls.set(key, JSON.stringify(state.transactions));
+        AsyncCache.set(key, state.transactions);
         BnLog('INFO', `Saved Activity Cache for User ${state.user.id}: ${state.transactions.length} items`);
     }
 
@@ -5519,17 +6248,17 @@ debug:
         }
     }
 
-    function deleteActivityHistory() {
+    async function deleteActivityHistory() {
         if (!state.user || !state.user.id) return;
         const key = `bh-activity-cache-${state.user.id}`;
-        localStorage.removeItem(key);
+        await AsyncCache.remove(key);
         state.transactions = [];
         BnLog('INFO', `activity history deleted for User ${state.user.id}`);
         showToast('Activity history cleared!', 'success');
         updateDashboard(true);
     }
     //
-    function StartupCleanup() {
+    async function StartupCleanup() {
         BnLog('STARTUP', 'Cleaning up..');
 
         try {
@@ -5539,8 +6268,15 @@ debug:
 
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && key.startsWith('bh-activity-cache-')) {
-                    const cached = _ls.json(key, null);
+                if (key && key.startsWith('bh-activity-cache-') && key !== 'bh-activity-cache-days') {
+                    localStorage.removeItem(key);
+                }
+            }
+
+            const keys = await AsyncCache.keys();
+            for (const key of keys) {
+                if (key.startsWith('bh-activity-cache-')) {
+                    const cached = await AsyncCache.get(key);
                     if (cached && Array.isArray(cached)) {
                         const initialCount = cached.length;
                         const filtered = cached.sort((a, b) => parseInt(b.date) - parseInt(a.date)).filter((t, index) => {
@@ -5548,7 +6284,7 @@ debug:
                             return !isNaN(date) && (date >= cutoff || index < 20);
                         });
                         if (filtered.length !== initialCount) {
-                            localStorage.setItem(key, JSON.stringify(filtered));
+                            await AsyncCache.set(key, filtered);
                             BnLog('INFO', `Pruned ${initialCount - filtered.length} expired items from ${key} (Kept ${filtered.length})`);
                         }
                     }
@@ -5695,6 +6431,7 @@ debug:
         const prevServerCount = state.serverCreator.servers.length;
         const prevStatus = state.apiStatus;
 
+        BnLog('INFO', `fetchServers: force=${force}`);
         const cachedStr = localStorage.getItem('bh-servers-list-cache');
         if (!force && cachedStr) {
             try {
@@ -5705,7 +6442,7 @@ debug:
                     state.apiStatus = 'up';
                     state.serverCreator.isFetchingServers = false;
                     if (state.serverCreator.servers.length !== prevServerCount || state.apiStatus !== prevStatus) {
-                        updateDashboard();
+                        //
                     }
                     updateServerManagement();
                     fetchAllServerDetails();
@@ -5718,7 +6455,8 @@ debug:
         }
 
         try {
-            const response = await fetchWithRetry('/api/servers?count=50&page=0', {
+            const url = force ? `/api/servers?count=50&page=0&_=${Date.now()}` : '/api/servers?count=50&page=0';
+            const response = await fetchWithRetry(url, {
                 method: 'GET',
                 headers: getHeaders()
             });
@@ -5735,7 +6473,7 @@ debug:
                 state.serverCreator.lastFetchError = false;
                 state.apiStatus = 'up';
                 if (state.serverCreator.servers.length !== prevServerCount || state.apiStatus !== prevStatus) {
-                    updateDashboard();
+                    //
                 }
                 updateServerManagement();
                 fetchAllServerDetails();
@@ -5743,14 +6481,14 @@ debug:
             } else {
                 state.serverCreator.lastFetchError = true;
                 state.apiStatus = 'down';
-                if (state.apiStatus !== prevStatus) updateDashboard();
+                if (state.apiStatus !== prevStatus) { }
                 updateServerManagement();
             }
         } catch (error) {
             BnLog('ERROR', 'Failed to fetch servers:', error);
             state.serverCreator.lastFetchError = true;
             state.apiStatus = 'down';
-            if (state.apiStatus !== prevStatus) updateDashboard();
+            if (state.apiStatus !== prevStatus) { }
             updateServerManagement();
         } finally {
             state.serverCreator.isFetchingServers = false;
@@ -5763,7 +6501,7 @@ debug:
 
     function saveServerDetailsCache() {
         try {
-            localStorage.setItem('bh-server-details-cache', JSON.stringify(state.serverDetailsCache));
+            AsyncCache.set('bh-server-details-cache', state.serverDetailsCache);
         } catch (e) {
             BnLog('ERROR', 'Failed to save server details cache:', e);
             if (e.name === 'QuotaExceededError' || e.code === 22) {
@@ -5774,7 +6512,7 @@ debug:
                     toRemove.forEach(k => delete state.serverDetailsCache[k]);
                     BnLog('INFO', `Quota error, Pruned ${toRemove.length} server cache entries`);
                     try {
-                        localStorage.setItem('bh-server-details-cache', JSON.stringify(state.serverDetailsCache));
+                        AsyncCache.set('bh-server-details-cache', state.serverDetailsCache);
                     } catch (e2) {
                         BnLog('ERROR', 'second save attempt failed after pruning:', e2);
                     }
@@ -5863,7 +6601,7 @@ debug:
         const btn = document.getElementById('unsuspend-btn');
         if (btn) {
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 1.2em; margin-right: 0.1rem; vertical-align: middle;"></i> Unsuspending...';
+            DOMUpdater.render('<svg class="bh-spinner" style="font-size: 1.2em; margin-right: 0.1rem; vertical-align: middle;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Unsuspending...', btn);
         }
 
         try {
@@ -5897,7 +6635,7 @@ debug:
 
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = 'Unsuspend Server';
+            DOMUpdater.render('Unsuspend Server', btn);
         }
     }
 
@@ -5917,7 +6655,13 @@ debug:
         return null;
     }
     //
-    async function checkCoinStatus() {
+    let lastCoinStatusCheck = 0;
+    async function checkCoinStatus(force = false) {
+        const now = Date.now();
+        if (!force && (now - lastCoinStatusCheck < 30000)) {
+            return state.coinCollector.lastCoinStatus;
+        }
+        lastCoinStatusCheck = now;
         try {
             const response = await fetchWithRetry('/api/freeCoinsStatus', {
                 method: 'GET',
@@ -5946,6 +6690,8 @@ debug:
     }
 
     async function claimCoins(captchaResponse = null) {
+        state.coinCollector.totalAttempts++;
+        updateCoinCollectorUI();
         const payload = captchaResponse ? { hCaptchaResponse: captchaResponse } : {};
 
         try {
@@ -5975,7 +6721,7 @@ debug:
         const modal = document.createElement('div');
         modal.id = 'bh-custom-captcha-modal';
         modal.className = 'bananaa-captcha-modal';
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="captcha-modal-overlay"></div>
       <div class="captcha-modal-container">
         <div class="captcha-modal-header">
@@ -6010,7 +6756,7 @@ debug:
           </button>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         updateModalTextColors();
@@ -6103,7 +6849,7 @@ debug:
             if (submitBtn) {
                 submitBtn.style.display = 'flex';
                 submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
+                DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Verifying...', submitBtn);
             }
         }
 
@@ -6114,8 +6860,6 @@ debug:
         showToast('Verifying CAPTCHA...', 'info');
 
         setTimeout(() => {
-            state.coinCollector.totalAttempts++;
-            updateCoinCollectorUI();
             claimCoins(response).then(async result => {
                 if (result.success) {
                     if (isAuto && modal) {
@@ -6135,6 +6879,7 @@ debug:
                     if (result.data.captcha === true) {
                         state.coinCollector.nextCoinRequiresCaptcha = true;
                     }
+                    updateCaptchaPRD();
                     saveCoinProgress();
                     updateCoinCollectorUI();
                     showToast(`+1 Coin Total: ${state.coinCollector.coinsCollected}/${CONFIG.MAX_COINS_PER_DAY}`, 'coins');
@@ -6169,7 +6914,7 @@ debug:
                         if (isAuto) {
                             if (submitBtn) {
                                 submitBtn.disabled = false;
-                                submitBtn.innerHTML = 'Confirm';
+                                DOMUpdater.render('Confirm', submitBtn);
                                 submitBtn.style.display = 'flex';
                             }
                             showToast('CAPTCHA verification failed, try again.', 'error');
@@ -6185,7 +6930,8 @@ debug:
         }, isAuto ? 1000 : 2500);
     }
 
-    function handleCaptchaError() {
+    function handleCaptchaError(reason = 'Unknown') {
+        BnLog('INFO', `Captcha required: ${reason}`);
         updateCoinCollectorUI();
 
         showToast('CAPTCHA required to continue', 'info');
@@ -6216,10 +6962,7 @@ debug:
             return;
         }
 
-        state.coinCollector.totalAttempts++;
-        updateCoinCollectorUI();
-
-        const status = await checkCoinStatus();
+        const status = await checkCoinStatus(true);
 
         if (!status) {
             setTimeout(attemptCoinCollection, CONFIG.NORMAL_COIN_INTERVAL);
@@ -6227,6 +6970,7 @@ debug:
         }
 
         state.coinCollector.coinsCollected = status.coinsClaimed || 0;
+        updateCaptchaPRD();
         updateCoinCollectorUI();
 
         if (state.coinCollector.coinsCollected >= CONFIG.MAX_COINS_PER_DAY) {
@@ -6248,7 +6992,7 @@ debug:
     async function claimNormalCoins() {
         if (state.coinCollector.nextCoinRequiresCaptcha) {
             state.coinCollector.nextCoinRequiresCaptcha = false;
-            handleCaptchaError();
+            handleCaptchaError('Clientside frequency');
             return;
         }
 
@@ -6285,7 +7029,7 @@ debug:
         } else {
             const error = result.error || {};
             if (error.message && error.message.includes('Must solve captcha.')) {
-                handleCaptchaError();
+                handleCaptchaError('Serverside requirement');
             } else if (error.coinsClaimed === 10) {
                 state.coinCollector.coinsCollected = error.coinsClaimed || 10;
                 updateCoinCollectorUI();
@@ -6301,12 +7045,10 @@ debug:
     async function InitialCheck() {
         if (state.coinCollector.nextCoinRequiresCaptcha) {
             state.coinCollector.nextCoinRequiresCaptcha = false;
-            handleCaptchaError();
+            handleCaptchaError('Initial Load Clientside frequency');
             return;
         }
 
-        state.coinCollector.totalAttempts++;
-        updateCoinCollectorUI();
         const result = await claimCoins();
 
         if (result.success) {
@@ -6332,7 +7074,7 @@ debug:
         } else {
             const error = result.error || {};
             if (error.message && error.message.includes('Must solve captcha.')) {
-                handleCaptchaError();
+                handleCaptchaError('Initial Load Serverside requirement');
             } else if (error.coinsClaimed === 10) {
                 state.coinCollector.coinsCollected = error.coinsClaimed || 10;
                 updateCoinCollectorUI();
@@ -6341,7 +7083,7 @@ debug:
                 //sendOSNotification('allCoins', 'BananaBurner', 'All coins collected for today!');
                 stopCoinCollector();
             } else {
-                const status = await checkCoinStatus();
+                const status = await checkCoinStatus(true);
                 if (status) {
                     state.coinCollector.coinsCollected = status.coinsClaimed || 0;
                     updateCoinCollectorUI();
@@ -6363,6 +7105,7 @@ debug:
         state.coinCollector.captchaClaimInProgress = false;
         state.coinCollector.initialLoadComplete = false;
         state.coinCollector.nextCoinRequiresCaptcha = false;
+        updateCaptchaPRD();
 
         state.toastQueue.length = 0;
         const existingToasts = document.querySelectorAll('.bh-toast');
@@ -6417,7 +7160,7 @@ debug:
         if (userCoins < cost) {
             costDisplay.style.color = 'var(--accent-error)';
             costDisplay.style.setProperty('border', '1px solid var(--accent-error)', 'important');
-            costDisplay.innerHTML = `${cost} coins per ${period} <span style="color: var(--accent-error); font-size: 0.8em;"></span>`;
+            DOMUpdater.render(`${cost} coins per ${period} <span style="color: var(--accent-error); font-size: 0.8em;"></span>`, costDisplay);
         } else {
             costDisplay.style.color = 'var(--text-primary)';
             costDisplay.style.setProperty('border', '1px solid var(--border-light)', 'important');
@@ -6572,7 +7315,7 @@ debug:
             if (modal) {
                 const title = modal.querySelector('.modal-header h3');
                 if (title) {
-                    title.innerHTML = 'New Server Created!';
+                    DOMUpdater.render('New Server Created!', title);
                     title.style.color = 'var(--accent-success)';
                 }
             }
@@ -6609,18 +7352,24 @@ debug:
 
         const content = document.getElementById('bh-main-content');
         if (content) {
+            content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
             content.style.opacity = '0';
             content.style.transform = 'translateX(20px)';
 
             setTimeout(() => {
                 state.currentView = view;
-                updateMainContent();
                 content.style.opacity = '1';
                 content.style.transform = 'translateX(0)';
+
+                setTimeout(() => {
+                    if (state.currentView === view) {
+                        content.style.transform = '';
+                        content.style.transition = '';
+                    }
+                }, 200);
             }, 200);
         } else {
             state.currentView = view;
-            updateMainContent();
         }
 
         document.querySelectorAll('.nav-item').forEach(item => {
@@ -6646,9 +7395,16 @@ debug:
         }
     }
 
+    let lastRenderedView = null;
+
     function updateMainContent(animate = true) {
         const content = document.getElementById('bh-main-content');
         if (!content) return;
+
+        if (lastRenderedView !== state.currentView) {
+            content.innerHTML = '';
+            lastRenderedView = state.currentView;
+        }
 
         let activityScroll = 0;
         const activityList = content.querySelector('.activity-list');
@@ -6663,37 +7419,55 @@ debug:
         }
 
         let html = '';
-        switch (state.currentView) {
-            case 'dashboard':
-                html = renderDashboard(animate);
-                break;
-            case 'coins':
-                html = renderCoinCollector();
-                setTimeout(() => {
-                    checkCoinStatus();
-                }, 100);
-                break;
-            case 'servers':
-                html = renderServerCreator();
-                break;
-            case 'manage':
-                html = renderServerManagement();
-                break;
-            case 'uptime':
-                html = renderUptimeMonitor();
-                break;
-            case 'market':
-                html = renderMarket();
-                if (Date.now() - state.market.lastFetch > state.market.cacheExpiry) {
-                    setTimeout(() => fetchMarketData(), 0);
-                }
-                break;
-            case 'wiki':
-                html = renderWiki();
-                break;
+        try {
+            switch (state.currentView) {
+                case 'dashboard':
+                    html = renderDashboard(animate);
+                    break;
+                case 'coins':
+                    html = renderCoinCollector();
+                    setTimeout(() => {
+                        checkCoinStatus();
+                    }, 100);
+                    break;
+                case 'servers':
+                    html = renderServerCreator();
+                    break;
+                case 'manage':
+                    html = renderServerManagement();
+                    break;
+                case 'uptime':
+                    html = renderUptimeMonitor();
+                    break;
+                case 'market':
+                    html = renderMarket();
+                    break;
+                case 'wiki':
+                    html = renderWiki();
+                    break;
+            }
+        } catch (err) {
+            BnLog('ERROR', `View crash in [${state.currentView}]:`, err);
+            html = `
+                <div class="error-boundary-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 400px; padding: 2rem; text-align: center;">
+                    <div style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--border-radius, 12px); padding: 3rem; max-width: 600px; box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1)); animation: fadeIn 0.3s ease-out;">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 3rem; color: var(--accent-error); margin-bottom: 1.5rem;"></i>
+                        <h2 style="color: var(--text-primary); margin: 0 0 1rem 0; font-size: 1.5rem;">Module Crashed</h2>
+                        <p style="color: var(--text-secondary); margin: 0 0 2rem 0; line-height: 1.6;">
+                            An unexpected error occurred while rendering the <strong>${state.currentView}</strong> view. The application is still running, but this specific module failed to load.
+                        </p>
+                        <div style="background: var(--bg-tertiary, rgba(0,0,0,0.2)); padding: 1rem; border-radius: 8px; text-align: left; overflow-x: auto; margin-bottom: 2rem;">
+                            <code style="color: var(--accent-error); font-family: var(--console-font, monospace); font-size: 0.85rem;">${escapeHTML(err.toString())}</code>
+                        </div>
+                        <button class="btn btn-primary" onclick="state.currentView = 'dashboard'" style="padding: 0.75rem 2rem;">
+                            <i class="fas fa-arrow-left"></i> Return to Dashboard
+                        </button>
+                    </div>
+                </div>
+            `;
         }
 
-        content.innerHTML = html;
+        DOMUpdater.render(html, content);
 
         if (activityScroll > 0) {
             requestAnimationFrame(() => {
@@ -6768,10 +7542,10 @@ debug:
                     const status = card.querySelector('.module-status');
                     if (status) {
                         status.className = `module-status ${running ? 'running' : 'stopped'}`;
-                        status.innerHTML = `
+                        DOMUpdater.render(`
                             <span class="status-dot"></span>
                             <span class="status-text">${running ? 'Running' : 'Stopped'}</span>
-                        `;
+                        `, status);
                     }
                 }
             }
@@ -6900,7 +7674,7 @@ debug:
                     const notice = document.createElement('div');
                     notice.id = 'bh-server-status-notice';
                     notice.className = 'status-notice warning';
-                    notice.innerHTML = `
+                    DOMUpdater.render(`
             <div class="status-notice-content">
               <i class="fas fa-exclamation-triangle"></i>
               <div class="status-notice-text">
@@ -6908,7 +7682,7 @@ debug:
                 <p>Server creation may not work as expected while services are experiencing issues.</p>
               </div>
             </div>
-          `;
+          `, notice);
                     moduleBody.insertBefore(notice, moduleBody.firstChild);
                 }
             } else {
@@ -6959,7 +7733,7 @@ debug:
 
     function updateServerManagement() {
         if (state.currentView === 'manage') {
-            updateMainContent();
+            //
         }
     }
 
@@ -6969,7 +7743,7 @@ debug:
             const avatarUrl = state.user.avatar ? `https://cdn.discordapp.com/avatars/${state.user.id}/${state.user.avatar}.webp?size=64` : 'https://cdn.discordapp.com/embed/avatars/0.png';
             const cachedAvatar = await window.__bh_cacheImage(avatarUrl);
 
-            profile.innerHTML = `
+            DOMUpdater.render(`
         <div class="user-avatar">
           <img src="${cachedAvatar}" 
                alt="${escapeHTML(state.user.username)}" 
@@ -6980,7 +7754,7 @@ debug:
           <span class="username notranslate">${escapeHTML(state.user.username)}</span>
           <span class="user-coins">${escapeHTML(String(state.user.coins))} coins</span>
         </div>
-      `;
+      `, profile);
             profile.onclick = showProfileModal;
             profile.oncontextmenu = (e) => {
                 showContextMenu(e, [
@@ -7008,6 +7782,8 @@ debug:
                             });
                             if (confirm) {
                                 localStorage.removeItem('token');
+                                localStorage.removeItem('telemetry-token');
+                                localStorage.removeItem('telemetry-user-id');
                                 location.href = 'https://bot-hosting.net/login';
                             }
                         }
@@ -7111,7 +7887,7 @@ debug:
             }
         };
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="modal-overlay" onclick="window.dismissSFTPModal()"></div>
       <div class="modal-container" style="max-width: 500px; background: var(--modal-bg-primary); padding: 0; overflow: hidden;">
         <div class="modal-header" style="background: var(--modal-tertiary-bg); padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); margin: 0; display: flex; align-items: center; justify-content: space-between;">
@@ -7162,7 +7938,7 @@ debug:
           </div>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         updateModalTextColors();
@@ -7172,7 +7948,7 @@ debug:
     async function handleNewSFTPPasswordGenerate(btn) {
         const originalHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+        DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Generating...', btn);
 
         const pass = await generateSFTPPassword();
         if (pass) {
@@ -7187,7 +7963,7 @@ debug:
         }
 
         btn.disabled = false;
-        btn.innerHTML = originalHtml;
+        DOMUpdater.render(originalHtml, btn);
     }
 
     function handleSFTPTeleportLaunch(user, pass, host, port, btn) {
@@ -7212,7 +7988,7 @@ debug:
             if (!success) {
                 showToast("If the SFTP app didn't open, ensure it supports 'sftp://' links.", 'warn');
                 if (btn) {
-                    btn.innerHTML = '<i class="fas fa-copy"></i> Copy SFTP Link';
+                    DOMUpdater.render('<i class="fas fa-copy"></i> Copy SFTP Link', btn);
                     btn.onclick = () => copyToClipboardWithFeedback(url, 'SFTP Link', btn);
                 }
             }
@@ -7225,9 +8001,9 @@ debug:
 
         if (lastVersion !== currentVersion) {
             try {
-                const response = await fetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/changelog.md');
+                const response = await callProxyFetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/changelog.md');
                 if (response.ok) {
-                    const text = await response.text();
+                    const text = response.data;
                     showChangelogModal(text);
                     localStorage.setItem('bh-version', currentVersion);
                 }
@@ -7243,22 +8019,30 @@ debug:
         if (!manualCheck) {
             const lastReminder = localStorage.getItem('bh-script-update-reminder');
             if (lastReminder && (Date.now() - parseInt(lastReminder)) < 48 * 60 * 60 * 1000) {
-                return;
+                return false;
             }
         }
 
         try {
-            const response = await fetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/sv.dat?t=' + Date.now());
-            if (!response.ok) return;
+            const response = await callProxyFetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/sv.dat?t=' + Date.now());
+            if (!response || !response.success) return false;
 
-            const remoteVersion = (await response.text()).trim();
-            if (!remoteVersion) return;
+            let text = response.data;
+            if (typeof text === 'string') {
+                text = text.replace(/^\uFEFF/, '').trim();
+            } else {
+                return false;
+            }
+            if (!text) return false;
 
-            const currentVersion = CONFIG.SCRIPT_VERSION;
+            const isExtensionUpdate = text.startsWith('!');
+
+            const sanitizeVer = (v) => v.toString().replace(/[^0-9.]/g, '');
+            const remoteVersion = sanitizeVer(text);
 
             const isNewer = (current, remote) => {
-                const c = current.split('.').map(Number);
-                const r = remote.split('.').map(Number);
+                const c = sanitizeVer(current).split('.').map(Number);
+                const r = sanitizeVer(remote).split('.').map(Number);
                 for (let i = 0; i < Math.max(c.length, r.length); i++) {
                     if ((r[i] || 0) > (c[i] || 0)) return true;
                     if ((c[i] || 0) > (r[i] || 0)) return false;
@@ -7266,14 +8050,114 @@ debug:
                 return false;
             };
 
-            if (isNewer(currentVersion, remoteVersion)) {
+            if (isExtensionUpdate) {
+                setTimeout(() => {
+                    openConfirmModal(
+                        'Extension Update Required',
+                        '<p>BananaBurner v' + remoteVersion + ' requires a core extension update!</p><p style="font-size: 0.85em; color: var(--text-secondary);">Please visit the GitHub repository, clone/download the latest source code, and replace your old extension folder. Then reload the extension from your browser extension settings.</p>',
+                        () => { window.open('https://github.com/relentiousdragon/BananaBurner', '_blank'); },
+                        'Open GitHub', false, () => { }, true
+                    );
+                }, 2000);
+                return true;
+            }
+
+            let highestVersion = CONFIG.SCRIPT_VERSION;
+            try {
+                const otaDb = await new Promise((resolve) => {
+                    const req = indexedDB.open('bh-ota-db', 1);
+                    req.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('scripts')) {
+                            db.createObjectStore('scripts', { keyPath: 'version' });
+                        }
+                    };
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => resolve(null);
+                });
+                if (otaDb) {
+                    const cachedVersions = await new Promise((resolve) => {
+                        const tx = otaDb.transaction('scripts', 'readonly');
+                        const req = tx.objectStore('scripts').getAll();
+                        req.onsuccess = () => resolve(req.result || []);
+                        req.onerror = () => resolve([]);
+                    });
+                    otaDb.close();
+                    for (const v of cachedVersions) {
+                        if (isNewer(highestVersion, v.version)) {
+                            highestVersion = v.version;
+                        }
+                    }
+                }
+            } catch (e) {
+                BnLog('WARN', 'Failed to check cache for highest version:', e);
+            }
+
+            if (isNewer(highestVersion, remoteVersion)) {
                 window.postMessage({ source: 'banana-burner', nonce: resolveBridgeNonce(), action: 'scriptUpdateDetected', version: remoteVersion }, '*');
 
-                const clResponse = await fetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/changelog.md');
-                const changelogText = clResponse.ok ? await clResponse.text() : '# New Update Available\nCheck GitHub for details.';
+                const osrc = localStorage.getItem('OSRC') === 'true';
+                if (osrc) {
+                    const scriptRes = await callProxyFetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/injected.js?t=' + Date.now());
+                    if (!scriptRes.ok) return false;
+                    const newCode = scriptRes.data;
 
-                showUpdateModal(currentVersion, remoteVersion, changelogText);
-                return true;
+                    if (!newCode.includes('let CONFIG = {') || !newCode.trim().endsWith('////////////////////////')) {
+                        console.error('[BananaBurner] Downloaded OTA script failed integrity check. Aborting update.');
+                        return false;
+                    }
+
+                    const db = await new Promise((resolve) => {
+                        const req = indexedDB.open('bh-ota-db', 1);
+                        req.onupgradeneeded = (e) => {
+                            const db = e.target.result;
+                            if (!db.objectStoreNames.contains('scripts')) {
+                                db.createObjectStore('scripts', { keyPath: 'version' });
+                            }
+                        };
+                        req.onsuccess = () => resolve(req.result);
+                        req.onerror = () => resolve(null);
+                    });
+
+                    if (!db) {
+                        console.error('[BananaBurner] Failed to open IndexedDB for OTA update.');
+                        return false;
+                    }
+
+                    await new Promise((resolve) => {
+                        const tx = db.transaction('scripts', 'readwrite');
+                        const store = tx.objectStore('scripts');
+                        store.put({ version: remoteVersion, code: newCode, timestamp: Date.now() });
+                        tx.oncomplete = resolve;
+                    });
+
+                    const versions = await new Promise((resolve) => {
+                        const tx = db.transaction('scripts', 'readonly');
+                        const req = tx.objectStore('scripts').getAll();
+                        req.onsuccess = () => resolve(req.result || []);
+                        req.onerror = () => resolve([]);
+                    });
+
+                    if (versions.length > 3) {
+                        versions.sort((a, b) => b.timestamp - a.timestamp);
+                        const toDelete = versions.slice(3);
+                        await new Promise((resolve) => {
+                            const tx = db.transaction('scripts', 'readwrite');
+                            const store = tx.objectStore('scripts');
+                            toDelete.forEach(v => store.delete(v.version));
+                            tx.oncomplete = resolve;
+                        });
+                    }
+
+                    showToast('BananaBurner v' + remoteVersion + ' downloaded! Reload to apply.', 'success');
+                    return true;
+                } else {
+                    const clResponse = await callProxyFetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/changelog.md');
+                    const changelogText = clResponse.ok ? clResponse.data : '# New Update Available\nCheck GitHub for details.';
+
+                    showUpdateModal(highestVersion, remoteVersion, changelogText);
+                    return true;
+                }
             }
         } catch (e) {
             BnLog('ERROR', 'Failed to check for script update:', e);
@@ -7310,7 +8194,7 @@ debug:
         padding: 2rem;
     `;
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <style>
         .bh-update-content {
             text-align: center;
@@ -7402,7 +8286,7 @@ debug:
 
         <a class="bh-remind-later" id="bh-remind-later">Remind me later</a>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
 
@@ -7414,16 +8298,16 @@ debug:
         document.getElementById('bh-download-script').onclick = async () => {
             const btn = document.getElementById('bh-download-script');
             const originalContent = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+            DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Downloading...', btn);
             btn.style.opacity = '0.8';
             btn.style.pointerEvents = 'none';
 
             try {
                 const rawUrl = 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/injected.js';
-                const response = await fetch(rawUrl);
+                const response = await callProxyFetch(rawUrl);
                 if (!response.ok) throw new Error('Download failed');
 
-                const blob = await response.blob();
+                const blob = new Blob([response.data], { type: 'application/javascript' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.style.display = 'none';
@@ -7463,7 +8347,7 @@ debug:
         modal.id = 'bh-tutorial-modal';
         modal.className = 'bananaa-modal';
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <style>
         .tutorial-step { display: flex; align-items: flex-start; gap: 15px; margin-bottom: 1.5rem; background: var(--modal-secondary-bg); padding: 1rem; border-radius: 12px; border: 1px solid var(--border-light); }
         .step-num { 
@@ -7514,7 +8398,7 @@ debug:
           <button class="btn btn-primary" id="tutorial-modal-btn">Got it!</button>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         setTimeout(() => modal.classList.add('visible'), 50);
@@ -7547,7 +8431,7 @@ debug:
             .replace(/(<li>.*<\/li>)/gms, '<ul>$1</ul>')
             .replace(/<\/ul>\n<ul>/g, '\n');
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <style>
         .changelog-container h1, .changelog-container h2, .changelog-container h3 {
             color: var(--modal-text-primary);
@@ -7601,7 +8485,7 @@ debug:
           <button class="btn btn-primary" id="changelog-modal-btn" style="padding: 0.6rem 2rem;">Got it!</button>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         updateModalTextColors();
@@ -7619,6 +8503,17 @@ debug:
     }
 
     function showProfileModal(skipSound = false) {
+        let otaOptionsHTML = '';
+        if (state.devMode || state.isBetaTester) {
+            otaOptionsHTML = `
+        <div id="bh-boot-version-container" class="setting-item" style="display: flex; justify-content: space-between; align-items: center; padding-top: 1rem; margin-top: 1rem; border-top: 1px solid var(--border-light);">
+          <div class="setting-info">
+            <div style="font-weight: 600; color: var(--text-primary);">Boot Version</div>
+            <div style="font-size: 0.8em; color: var(--text-secondary);">Select script version to boot</div>
+          </div>
+          <div style="font-size: 0.9em; color: var(--text-secondary);">Loading...</div>
+        </div>`;
+        }
 
         if (!skipSound) SoundManager.playButtonClick();
 
@@ -7633,7 +8528,7 @@ debug:
         const modal = document.createElement('div');
         modal.id = 'bh-profile-modal';
         modal.className = 'bananaa-modal';
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <style>
         .profile-tab {
             position: relative;
@@ -7860,7 +8755,7 @@ debug:
                         <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
                             <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Primary Font</label>
                             <select id="font-primary-select" class="form-select" style="width: 100%; border: 1px solid var(--border-light) !important; border-radius: var(--border-radius) !important; appearance: none; background-color: var(--bg-primary) !important; padding: 0.4rem 0.75rem; font-family: ${state.settings.fontPrimary === 'custom' ? state.settings.customPrimaryFont : (FONT_OPTIONS[state.settings.fontPrimary] || FONT_OPTIONS.default)}; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
-                              ${['default', 'sans-serif', 'serif', 'monospace', 'pixelated', 'rounded', 'elegant', 'outfit', 'inter', 'montserrat', 'roboto', 'poppins', 'cyberpunk', 'pirate', 'onepiece', 'minecraft', ...(state.settings.fontPrimary === 'custom' ? ['custom'] : [])].map(f => {
+                              ${['default', 'sans-serif', 'serif', 'monospace', 'pixelated', 'rounded', 'elegant', 'outfit', 'inter', 'montserrat', 'roboto', 'poppins', 'cyberpunk', 'pirate', 'onepiece', 'minecraft', ...((state.settings.fontPrimary === 'custom' || state.devMode) ? ['custom'] : [])].map(f => {
                 const fontFamily = f === 'custom' ? state.settings.customPrimaryFont : (FONT_OPTIONS[f] || FONT_OPTIONS.default);
                 return `<option class="notranslate" value="${f}" ${state.settings.fontPrimary === f ? 'selected' : ''} style="font-family: ${fontFamily} !important;">${f.charAt(0).toUpperCase() + f.slice(1)}</option>`;
             }).join('')}
@@ -7869,7 +8764,7 @@ debug:
                         <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
                             <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Secondary Font</label>
                             <select id="font-secondary-select" class="form-select" style="width: 100%; border: 1px solid var(--border-light) !important; border-radius: var(--border-radius) !important; appearance: none; background-color: var(--bg-primary) !important; padding: 0.4rem 0.75rem; font-family: ${state.settings.fontSecondary === 'custom' ? state.settings.customSecondaryFont : (FONT_OPTIONS[state.settings.fontSecondary] || FONT_OPTIONS.default)}; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
-                              ${['default', 'sans-serif', 'serif', 'monospace', 'pixelated', 'rounded', 'elegant', 'outfit', 'inter', 'montserrat', 'roboto', 'poppins', 'cyberpunk', 'pirate', 'onepiece', 'minecraft', ...(state.settings.fontSecondary === 'custom' ? ['custom'] : [])].map(f => {
+                              ${['default', 'sans-serif', 'serif', 'monospace', 'pixelated', 'rounded', 'elegant', 'outfit', 'inter', 'montserrat', 'roboto', 'poppins', 'cyberpunk', 'pirate', 'onepiece', 'minecraft', ...((state.settings.fontSecondary === 'custom' || state.devMode) ? ['custom'] : [])].map(f => {
                 const fontFamily = f === 'custom' ? state.settings.customSecondaryFont : (FONT_OPTIONS[f] || FONT_OPTIONS.default);
                 return `<option class="notranslate" value="${f}" ${state.settings.fontSecondary === f ? 'selected' : ''} style="font-family: ${fontFamily} !important;">${f.charAt(0).toUpperCase() + f.slice(1)}</option>`;
             }).join('')}
@@ -7905,6 +8800,86 @@ debug:
                     </div>
                 </div>
 
+                ${state.devMode ? `
+                <div class="theme-section">
+                    <h4 style="color: var(--accent-primary); margin-bottom: 1rem; border-bottom: 1px solid var(--border-light); padding-bottom: 0.5rem;"><i class="fas fa-code"></i> Other/Experimental</h4>
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div class="setting-item" style="justify-content: space-between; align-items: center;">
+                            <div class="setting-info">
+                                <div style="font-weight: 600; color: var(--text-primary);">Frost</div>
+                                <div style="font-size: 0.8em; color: var(--text-secondary);">Blur</div>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="dev-theme-frost" ${state.settings.frost ? 'checked' : ''} ${locked ? 'disabled' : ''}>
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item" style="justify-content: space-between; align-items: center;">
+                            <div class="setting-info">
+                                <div style="font-weight: 600; color: var(--text-primary);">Cursor Glow</div>
+                                <div style="font-size: 0.8em; color: var(--text-secondary);">Dynamic cursor aware glow</div>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="dev-theme-cursorglow" ${state.settings.cursorGlow ? 'checked' : ''} ${locked ? 'disabled' : ''}>
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        
+                        <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Cursor Glow Color</label>
+                            <div style="display: flex; width: 100%; gap: 10px;" class="color-picker-wrapper">
+                                <input type="text" class="color-hex-input mobile-only" id="dev-theme-cursorglowcolor-hex" value="${state.settings.cursorGlowColor}" style="border-width: 0px !important; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                                <input type="color" id="dev-theme-cursorglowcolor" value="${(state.settings.cursorGlowColor && state.settings.cursorGlowColor.startsWith('#')) ? state.settings.cursorGlowColor.slice(0, 7) : '#22d3ee'}" style="border-width: 0px !important; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                            </div>
+                        </div>
+
+                        <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Theme Title</label>
+                            <input type="text" id="dev-theme-title" class="bh-input" value="${state.settings.themeTitle}" style="width: 100%; border: 1px solid var(--border-light); border-radius: var(--border-radius); background: var(--bg-secondary); color: var(--text-primary); padding: 0.4rem 0.75rem; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                        </div>
+
+                        <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Background Image URL</label>
+                            <input type="text" id="dev-theme-bg" class="bh-input" value="${state.settings.themeBackgroundImage || ''}" style="width: 100%; border: 1px solid var(--border-light); border-radius: var(--border-radius); background: var(--bg-secondary); color: var(--text-primary); padding: 0.4rem 0.75rem; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                        </div>
+                        
+                        <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Gradient Background (JSON)</label>
+                            <input type="text" id="dev-theme-gradient" class="bh-input" value='${JSON.stringify(state.settings.gradientBg || { enabled: false })}' style="width: 100%; border: 1px solid var(--border-light); border-radius: var(--border-radius); background: var(--bg-secondary); color: var(--text-primary); padding: 0.4rem 0.75rem; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                        </div>
+
+                        <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Custom Font Import URL</label>
+                            <input type="text" id="dev-theme-fontimport" class="bh-input" value="${state.settings.customFontImport || ''}" style="width: 100%; border: 1px solid var(--border-light); border-radius: var(--border-radius); background: var(--bg-secondary); color: var(--text-primary); padding: 0.4rem 0.75rem; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                        </div>
+                        
+                        <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Custom Primary Font</label>
+                            <input type="text" id="dev-theme-customprimaryfont" class="bh-input" value="${state.settings.customPrimaryFont || ''}" placeholder="'Roboto', sans-serif" style="width: 100%; border: 1px solid var(--border-light); border-radius: var(--border-radius); background: var(--bg-secondary); color: var(--text-primary); padding: 0.4rem 0.75rem; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                        </div>
+
+                        <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Custom Secondary Font</label>
+                            <input type="text" id="dev-theme-customsecondaryfont" class="bh-input" value="${state.settings.customSecondaryFont || ''}" placeholder="'Roboto', sans-serif" style="width: 100%; border: 1px solid var(--border-light); border-radius: var(--border-radius); background: var(--bg-secondary); color: var(--text-primary); padding: 0.4rem 0.75rem; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                        </div>
+                        
+                        <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Console Font</label>
+                            <input type="text" id="dev-theme-consolefont" class="bh-input" value="${state.settings.consoleFont || 'default'}" style="width: 100%; border: 1px solid var(--border-light); border-radius: var(--border-radius); background: var(--bg-secondary); color: var(--text-primary); padding: 0.4rem 0.75rem; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                        </div>
+
+                        ${['success', 'error', 'warning', 'info'].map(t => `
+                        <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <label style="font-size: 0.9em; font-weight: 600; color: var(--text-primary);">Toast Color (${t})</label>
+                            <div style="display: flex; width: 100%; gap: 10px;" class="color-picker-wrapper">
+                                <input type="text" class="color-hex-input mobile-only" id="dev-theme-toast-${t}-hex" value="${state.settings.toastColors[t]}" style="border-width: 0px !important; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                                <input type="color" id="dev-theme-toast-${t}" value="${state.settings.toastColors[t]}" style="border-width: 0px !important; ${locked ? 'opacity: 0.5; cursor: not-allowed;' : ''}" ${locked ? 'disabled' : ''}>
+                            </div>
+                        </div>`).join('')}
+                    </div>
+                </div>
+                ` : ''}
+
                 <button class="btn btn-sm ${state.coinCollector.bananaMode ? 'btn-danger' : 'btn-primary'}" id="reset-theme" style="margin-top: 0.5rem; ${state.coinCollector.bananaMode ? 'background: var(--accent-error); color: white; width: 100%;' : ''}">
                     ${state.coinCollector.bananaMode ? '<i class="fas fa-power-off"></i> Disable Banana Mode' : 'Reset Theme'}
                 </button>
@@ -7914,8 +8889,9 @@ debug:
           <div class="profile-tab-content" id="tab-settings" style="display: none;">
             <div class="settings-content" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
               <div style="text-align: center; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-light);">
-                <p style="font-size: 0.85em; color: var(--text-secondary); margin: 0;">Script Version: ${CONFIG.SCRIPT_VERSION}</p>
+                <p style="font-size: 0.85em; color: var(--text-secondary); margin: 0;">Script Version: v${CONFIG.SCRIPT_VERSION}${window.__bh_canary_running ? ' CANARY' : ''}</p>
               </div>
+${otaOptionsHTML}
 
               <div class="setting-item" style="display: ${localStorage.getItem('OSRC') === 'true' ? 'none' : 'flex'}; justify-content: space-between; align-items: center;">
                 <div class="setting-info">
@@ -8101,7 +9077,7 @@ debug:
                   <p style="font-size: 0.85em; color: var(--text-secondary);">This will clear all script data including theme settings, quick actions, coin progress, and all preferences. This action cannot be undone.</p>
                 </div>
                 <button class="btn btn-danger" id="reset-local-storage-btn" style="width: 100%; margin-bottom: 0.5rem;">
-                  <i class="fas fa-trash-alt"></i> Reset All Local Storage
+                  <i class="fas fa-trash-alt"></i> Reset All Stored Data
                 </button>
                 <button class="btn btn-danger" id="delete-activity-history-btn" style="width: 100%; background: transparent !important; border: 1px solid var(--accent-error) !important; color: var(--accent-error) !important;">
                   <i class="fas fa-history"></i> Delete Activity History
@@ -8121,7 +9097,7 @@ debug:
 
               <div id="webhook-list-container">
                 <div class="webhooks-loading" style="text-align: center; padding: 2rem;">
-                  <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-primary);"></i>
+                  <svg class="bh-spinner" style="font-size: 2rem; color: var(--accent-primary);" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
                   <p style="margin-top: 1rem; color: var(--text-secondary);">Loading your webhooks...</p>
                 </div>
               </div>
@@ -8164,7 +9140,7 @@ debug:
           </div>
         </div>
       </div>
-    `;
+    `, modal);
 
         modal.querySelectorAll('select, input:not([type="range"])').forEach(el => {
             if (el.classList.contains('form-control')) return;
@@ -8238,7 +9214,7 @@ debug:
         modal.querySelector('#generate-sftp-btn').onclick = async () => {
             const btn = modal.querySelector('#generate-sftp-btn');
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Generating...</span>';
+            DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> <span>Generating...</span>', btn);
 
             const password = await generateSFTPPassword();
 
@@ -8255,7 +9231,7 @@ debug:
             }
 
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-sync-alt"></i> <span>Generate New SFTP Password</span>';
+            DOMUpdater.render('<i class="fas fa-sync-alt"></i> <span>Generate New SFTP Password</span>', btn);
         };
 
         const copyBtn = modal.querySelector('#copy-new-password');
@@ -8328,14 +9304,111 @@ debug:
         function updateCustomTheme() {
             if (!state.settings.customTheme) state.settings.customTheme = {};
 
-            Object.entries(themeMap).forEach(([id, cssVar]) => {
-                const el = modal.querySelector(`#${id}`);
-                if (el) state.settings.customTheme[cssVar] = el.value;
+            Object.keys(themeMap).forEach(key => {
+                const hexInput = document.querySelector(`.color-hex-input[data-target="${key}"]`);
+                if (hexInput && hexInput.value) {
+                    state.settings.customTheme[themeMap[key]] = hexInput.value;
+                }
             });
 
-            localStorage.setItem('bh-custom-theme', JSON.stringify(state.settings.customTheme));
+            const radiusInput = modal.querySelector('#corner-radius-slider');
+            if (radiusInput) state.settings.cornerRadius = parseInt(radiusInput.value);
+
+            const blurInput = modal.querySelector('#popup-blur-slider');
+            if (blurInput) state.settings.popupBlur = parseInt(blurInput.value);
+
+            const borderInput = modal.querySelector('#border-width-slider');
+            if (borderInput) state.settings.borderWidth = parseFloat(borderInput.value);
+
             applyCustomTheme();
-            updateModalTextColors();
+            _ls.set('bh-custom-theme', JSON.stringify(state.settings.customTheme));
+            _ls.set('bh-corner-radius', state.settings.cornerRadius);
+            _ls.set('bh-popup-blur', state.settings.popupBlur);
+            _ls.set('bh-border-width', state.settings.borderWidth);
+        }
+
+        if (state.devMode) {
+            const devFrost = modal.querySelector('#dev-theme-frost');
+            if (devFrost) {
+                devFrost.onchange = (e) => {
+                    state.settings.frost = e.target.checked;
+                    _ls.set('bh-frost', state.settings.frost);
+                    if (state.settings.frost) document.body.classList.add('frost-enabled');
+                    else document.body.classList.remove('frost-enabled');
+                };
+            }
+
+            const devGlow = modal.querySelector('#dev-theme-cursorglow');
+            if (devGlow) {
+                devGlow.onchange = (e) => {
+                    state.settings.cursorGlow = e.target.checked;
+                    _ls.set('bh-cursor-glow', JSON.stringify(state.settings.cursorGlow));
+                };
+            }
+
+            const devGlowHex = modal.querySelector('#dev-theme-cursorglowcolor-hex');
+            const devGlowColor = modal.querySelector('#dev-theme-cursorglowcolor');
+            if (devGlowHex && devGlowColor) {
+                const updateGlowColor = (val) => {
+                    state.settings.cursorGlowColor = val;
+                    _ls.set('bh-cursor-glow-color', val);
+                    document.documentElement.style.setProperty('--cursor-glow-color', val);
+                };
+                devGlowHex.onchange = (e) => {
+                    updateGlowColor(e.target.value);
+                    if (e.target.value.startsWith('#')) devGlowColor.value = e.target.value.slice(0, 7);
+                };
+                devGlowColor.onchange = (e) => {
+                    updateGlowColor(e.target.value);
+                    devGlowHex.value = e.target.value;
+                };
+            }
+
+            ['success', 'error', 'warning', 'info'].forEach(t => {
+                const hexInput = modal.querySelector(`#dev-theme-toast-${t}-hex`);
+                const colorInput = modal.querySelector(`#dev-theme-toast-${t}`);
+                if (hexInput && colorInput) {
+                    const updateToast = (val) => {
+                        state.settings.toastColors[t] = val;
+                        _ls.set('bh-toast-colors', JSON.stringify(state.settings.toastColors));
+                    };
+                    hexInput.onchange = (e) => {
+                        updateToast(e.target.value);
+                        if (e.target.value.startsWith('#')) colorInput.value = e.target.value.slice(0, 7);
+                    };
+                    colorInput.onchange = (e) => {
+                        updateToast(e.target.value);
+                        hexInput.value = e.target.value;
+                    };
+                }
+            });
+
+            const txtInputs = [
+                { id: 'dev-theme-title', key: 'themeTitle', lsKey: 'bh-theme-title' },
+                { id: 'dev-theme-bg', key: 'themeBackgroundImage', lsKey: 'bh-theme-bg-image', apply: (val) => { if (val) { document.documentElement.style.setProperty('--global-bg-image', `url("${val}")`); document.body.classList.add('has-bg-image'); } else { document.documentElement.style.removeProperty('--global-bg-image'); document.body.classList.remove('has-bg-image'); } } },
+                { id: 'dev-theme-gradient', key: 'gradientBg', lsKey: 'bh-gradient-bg', parseJSON: true, apply: () => { applyGradientBg(); } },
+                { id: 'dev-theme-fontimport', key: 'customFontImport', lsKey: 'bh-custom-font-import' },
+                { id: 'dev-theme-customprimaryfont', key: 'customPrimaryFont', lsKey: 'bh-custom-primary-font' },
+                { id: 'dev-theme-customsecondaryfont', key: 'customSecondaryFont', lsKey: 'bh-custom-secondary-font' },
+                { id: 'dev-theme-consolefont', key: 'consoleFont', lsKey: 'bh-console-font' }
+            ];
+
+            txtInputs.forEach(({ id, key, lsKey, parseJSON, apply }) => {
+                const el = modal.querySelector(`#${id}`);
+                if (el) {
+                    el.onchange = (e) => {
+                        let val = e.target.value;
+                        if (parseJSON) {
+                            try { val = JSON.parse(val); } catch (err) { return showToast('Invalid JSON syntax', 'error'); }
+                            _ls.set(lsKey, JSON.stringify(val));
+                        } else {
+                            _ls.set(lsKey, val);
+                        }
+                        state.settings[key] = val;
+                        if (apply) apply(val);
+                    };
+                }
+            });
         }
 
         Object.keys(themeMap).forEach(id => {
@@ -8393,7 +9466,7 @@ debug:
         if (activityCacheDaysSelect) {
             activityCacheDaysSelect.onchange = () => {
                 state.settings.activityCacheDays = parseInt(activityCacheDaysSelect.value);
-                localStorage.setItem('bh-activity-cache-days', state.settings.activityCacheDays);
+                _ls.set('bh-activity-cache-days', state.settings.activityCacheDays);
                 cleanupActivityCache();
                 showToast(`History limit set to ${state.settings.activityCacheDays} days`, 'info');
             };
@@ -8497,7 +9570,6 @@ debug:
                 localStorage.setItem('bh-privacy-mode', JSON.stringify(state.settings.privacyMode));
                 if (alwaysHideContainer) alwaysHideContainer.style.display = state.settings.privacyMode ? 'flex' : 'none';
                 showToast(`Privacy Mode ${state.settings.privacyMode ? 'enabled' : 'disabled'}`, 'info');
-                updateMainContent();
             };
         }
 
@@ -8516,7 +9588,6 @@ debug:
                 state.settings.alwaysHide = e.target.checked;
                 localStorage.setItem('bh-always-hide', JSON.stringify(state.settings.alwaysHide));
                 showToast(`Always Hide ${state.settings.alwaysHide ? 'enabled' : 'disabled'}`, 'info');
-                updateMainContent();
             };
         }
 
@@ -8586,7 +9657,7 @@ debug:
         if (checkUpdateBtn) {
             checkUpdateBtn.addEventListener('click', async () => {
                 checkUpdateBtn.disabled = true;
-                checkUpdateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
+                DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Checking...', checkUpdateBtn);
 
                 window.postMessage({ source: 'banana-burner', nonce: resolveBridgeNonce(), action: 'checkExtensionUpdate' }, '*');
 
@@ -8611,13 +9682,21 @@ debug:
                 }
 
                 checkUpdateBtn.disabled = false;
-                checkUpdateBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Check for Updates';
+                DOMUpdater.render('<i class="fas fa-sync-alt"></i> Check for Updates', checkUpdateBtn);
             });
         }
         if (resetBtn) {
             resetBtn.onclick = () => {
-                openConfirmModal('Reset Storage', 'Are you sure you want to reset all local storage? This will clear all script data including settings, preferences, caches, and progress. <b>This cannot be undone.</b>', async () => {
+                openConfirmModal('Reset Storage', 'Are you sure you want to reset all stored data? This will clear all script data including settings, preferences, caches, and progress across LocalStorage and IndexedDB. <b>This cannot be undone.</b>', async () => {
                     localStorage.clear();
+                    localStorage.removeItem('telemetry-token');
+                    localStorage.removeItem('telemetry-user-id');
+
+                    try {
+                        await AsyncCache.clear();
+                    } catch (e) {
+                        BnLog('ERROR', 'Failed to clear IndexedDB:', e);
+                    }
 
                     try {
                         const cacheNames = await caches.keys();
@@ -8626,7 +9705,7 @@ debug:
                         BnLog('ERROR', 'Failed to clear caches:', err);
                     }
 
-                    showToast('Localstorage and caches cleared! Reloading...', 'success');
+                    showToast('All stored data cleared! Reloading...', 'success');
                     setTimeout(() => location.reload(), 1500);
                 }, 'Reset All', true, null, true);
             };
@@ -8653,6 +9732,60 @@ debug:
                 }
             };
         }
+
+        if (state.devMode || state.isBetaTester) {
+            (async () => {
+                let otaVersions = [];
+                try {
+                    const db = await new Promise(r => {
+                        const req = indexedDB.open('bh-ota-db', 1);
+                        req.onsuccess = () => r(req.result);
+                        req.onerror = () => r(null);
+                    });
+                    if (db) {
+                        otaVersions = await new Promise(r => {
+                            const tx = db.transaction('scripts', 'readonly');
+                            const store = tx.objectStore('scripts');
+                            const req = store.getAll();
+                            req.onsuccess = () => r(req.result || []);
+                            req.onerror = () => r([]);
+                        });
+                    }
+                } catch (e) {
+                    console.error('[BananaBurner] Failed to load cached OTA versions:', e);
+                }
+
+                const container = document.getElementById('bh-boot-version-container');
+                if (container) {
+                    const pref = localStorage.getItem('bh-ota-version') || 'Latest > Bundled';
+                    const bundledOpt = parseFloat(CONFIG.SCRIPT_VERSION) >= 3.7 ? `<option value="Bundled" ${pref === 'Bundled' ? 'selected' : ''}>Bundled (v${CONFIG.SCRIPT_VERSION})</option>` : '';
+                    const cacheOpts = otaVersions.map(v => `<option value="${v.version}" ${pref === v.version ? 'selected' : ''}>Cached v${v.version}</option>`).join('');
+                    const canaryOpt = (state.isBetaTester || pref === 'Canary > Bundled') ? `<option value="Canary > Bundled" ${pref === 'Canary > Bundled' ? 'selected' : ''}>Canary > Bundled</option>` : '';
+
+                    container.innerHTML = `
+                      <div class="setting-info">
+                        <div style="font-weight: 600; color: var(--text-primary);">Boot Version</div>
+                        <div style="font-size: 0.8em; color: var(--text-secondary);">Select script version to boot</div>
+                      </div>
+                      <select class="modern-input" style="width: auto; padding: 0.4rem;" onchange="localStorage.setItem('bh-ota-version', this.value); window.location.reload();">
+                        <option value="Latest > Bundled" ${pref === 'Latest > Bundled' ? 'selected' : ''}>Latest > Bundled</option>
+                        ${canaryOpt}
+                        ${bundledOpt}
+                        ${cacheOpts}
+                      </select>
+                    `;
+
+                    container.querySelectorAll('select, input').forEach(el => {
+                        el.style.setProperty('border', 'none', 'important');
+                        el.style.setProperty('border-width', '0px', 'important');
+                        el.style.setProperty('outline', 'none', 'important');
+                        el.style.setProperty('box-shadow', 'none', 'important');
+                        el.style.setProperty('-webkit-appearance', 'none', 'important');
+                        el.style.setProperty('appearance', 'none', 'important');
+                    });
+                }
+            })();
+        }
     }
 
     async function loadAffiliateContent() {
@@ -8663,7 +9796,7 @@ debug:
 
         if (data) {
             const estimatedCoins = data.uses * data.coinsPerReferral;
-            container.innerHTML = `
+            DOMUpdater.render(`
         <div class="affiliate-info">
           <div class="affiliate-header">
             <i class="fas fa-gift"></i>
@@ -8702,7 +9835,7 @@ debug:
             <span>Sign ups that are detected as fake may not be counted.</span>
           </div>
         </div>
-      `;
+      `, container);
 
             container.querySelector('#copy-affiliate-link').onclick = () => {
                 const input = container.querySelector('#affiliate-link-input');
@@ -8712,12 +9845,12 @@ debug:
                 }
             };
         } else {
-            container.innerHTML = `
+            DOMUpdater.render(`
         <div class="affiliate-error">
           <i class="fas fa-exclamation-triangle"></i>
           <p>Failed to load affiliate information.</p>
         </div>
-      `;
+      `, container);
         }
     }
 
@@ -8727,7 +9860,7 @@ debug:
                 const btn = document.querySelector(`.delete-webhook-btn[data-id="${id}"]`);
                 if (btn) {
                     btn.disabled = true;
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                    DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>', btn);
                 }
 
                 if (url && url.includes('/bb/relay/')) {
@@ -8751,7 +9884,7 @@ debug:
                     showToast('Failed to delete webhook', 'error');
                     if (btn) {
                         btn.disabled = false;
-                        btn.innerHTML = '<i class="fas fa-trash"></i>';
+                        DOMUpdater.render('<i class="fas fa-trash"></i>', btn);
                     }
                 }
             } catch (e) {
@@ -8767,12 +9900,12 @@ debug:
         const createBtn = document.getElementById('create-webhook-btn');
         if (!container) return;
 
-        container.innerHTML = `
+        DOMUpdater.render(`
       <div class="webhooks-loading" style="text-align: center; padding: 2rem;">
-        <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-primary);"></i>
+        <svg class="bh-spinner" style="font-size: 2rem; color: var(--accent-primary);" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
         <p style="margin-top: 1rem; color: var(--text-secondary);">Loading your webhooks...</p>
       </div>
-    `;
+    `, container);
 
         try {
             const response = await fetchWithRetry('/api/webhooks', {
@@ -8800,7 +9933,7 @@ debug:
 
             if (webhooks && webhooks.length > 0) {
                 if (createBtn) createBtn.style.display = 'none';
-                container.innerHTML = webhooks.map(webhook => {
+                DOMUpdater.render(webhooks.map(webhook => {
                     const isRelay = relayPattern.test(webhook.url);
                     const displayUrl = isRelay ? 'Relayed Webhook' : webhook.url;
 
@@ -8827,7 +9960,7 @@ debug:
               </button>
             </div>
           </div>
-        `}).join('');
+        `}).join(''), container);
 
                 container.querySelectorAll('.delete-webhook-btn').forEach(btn => {
                     btn.onclick = (e) => {
@@ -8846,20 +9979,20 @@ debug:
                 });
             } else {
                 if (createBtn) createBtn.style.display = 'flex';
-                container.innerHTML = `
+                DOMUpdater.render(`
           <div style="text-align: center; padding: 2rem; background: var(--modal-tertiary-bg); border-radius: 12px; border: 1px dashed var(--border-light);">
             <i class="fas fa-link-slash" style="font-size: 2.5rem; color: var(--text-secondary); opacity: 0.5;"></i>
             <p style="margin-top: 1rem; color: var(--text-secondary);">No webhooks found.</p>
           </div>
-        `;
+        `, container);
             }
         } catch (error) {
-            container.innerHTML = `
+            DOMUpdater.render(`
         <div style="text-align: center; padding: 2rem; color: var(--accent-error);">
           <i class="fas fa-exclamation-circle" style="font-size: 2rem;"></i>
           <p style="margin-top: 1rem;">Failed to load webhooks.</p>
         </div>
-      `;
+      `, container);
         }
 
         if (createBtn) {
@@ -8925,7 +10058,7 @@ debug:
                 }
 
                 saveBtn.disabled = true;
-                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+                DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Creating...', saveBtn);
 
                 try {
                     if (isDiscord) {
@@ -9005,7 +10138,7 @@ debug:
                     showToast('Error creating webhook', 'error');
                 } finally {
                     saveBtn.disabled = false;
-                    saveBtn.innerHTML = 'Create Webhook';
+                    DOMUpdater.render('Create Webhook', saveBtn);
                 }
             };
         }
@@ -9260,59 +10393,14 @@ debug:
         }
     }
 
-    let isServerDetailsLoading = false;
     async function showServerDetails(serverId, forceRefresh = false, event = null) {
-        if (isServerDetailsLoading && !forceRefresh) return;
-        isServerDetailsLoading = true;
-
-        let clickedBtn = null;
-        if (event && event.target) {
-            clickedBtn = event.currentTarget && event.currentTarget.tagName === 'BUTTON'
-                ? event.currentTarget
-                : (event.target.closest('.action-btn') || event.target.closest('button[onclick*="showServerDetails"]') || event.target.closest('.btn'));
-        }
-
-        const allBtns = Array.from(document.querySelectorAll('button[onclick*="showServerDetails"], .servers-grid .btn, .action-btn[data-action-type="server"]'));
-
-        allBtns.forEach(btn => {
-            if (!btn.disabled) {
-                btn.dataset.wasDisabled = 'false';
-                btn.disabled = true;
-                btn.style.opacity = '0.6';
-                btn.style.cursor = 'not-allowed';
-            }
-        });
-
-        if (clickedBtn && clickedBtn.tagName === 'BUTTON') {
-            clickedBtn.dataset.originalHtml = clickedBtn.innerHTML;
-            const main = clickedBtn.querySelector('.action-btn-main');
-            if (main) {
-                const icon = main.querySelector('i');
-                const label = main.querySelector('span');
-                if (icon) {
-                    icon.className = 'fas fa-spinner fa-spin';
-                    icon.style.setProperty('font-size', '1.35em', 'important');
-                }
-                if (label) label.textContent = 'Wait...';
-            } else {
-                clickedBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 1.35em !important;"></i> Loading...';
-            }
-        }
+        if (state.loadingServerId && !forceRefresh) return;
+        state.loadingServerId = serverId;
+        if (typeof updateQuickActionsGrid === 'function') updateQuickActionsGrid();
 
         const cleanup = () => {
-            isServerDetailsLoading = false;
-            if (clickedBtn && clickedBtn.dataset.originalHtml) {
-                clickedBtn.innerHTML = clickedBtn.dataset.originalHtml;
-                delete clickedBtn.dataset.originalHtml;
-            }
-            allBtns.forEach(btn => {
-                if (btn && btn.dataset && btn.dataset.wasDisabled === 'false') {
-                    btn.disabled = false;
-                    btn.style.opacity = '';
-                    btn.style.cursor = '';
-                }
-                if (btn && btn.dataset) delete btn.dataset.wasDisabled;
-            });
+            state.loadingServerId = null;
+            if (typeof updateQuickActionsGrid === 'function') updateQuickActionsGrid();
         };
 
         try {
@@ -9438,7 +10526,7 @@ debug:
             modal.dataset.serverId = serverId;
             if (isBlocked) modal.dataset.wasBlocked = 'true';
 
-            modal.innerHTML = `
+            DOMUpdater.render(`
       <div class="modal-overlay"></div>
       ${state.controlPanelStatus === 'up' && !isSuspended && !isBlocked ? `
       <div class="console-container">
@@ -9498,7 +10586,7 @@ debug:
           </div>
           <div class="pullout-panel-body">
             <div class="startup-loading files-loading">
-              <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+              <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
               <span>Loading startup...</span>
             </div>
           </div>
@@ -9510,7 +10598,7 @@ debug:
           </div>
           <div class="pullout-panel-body">
             <div class="files-loading">
-              <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+              <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
               <span>Loading files...</span>
             </div>
           </div>
@@ -9522,7 +10610,7 @@ debug:
           </div>
           <div class="pullout-panel-body">
             <div class="network-loading files-loading">
-              <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+              <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
               <span>Loading allocations...</span>
             </div>
           </div>
@@ -9534,7 +10622,7 @@ debug:
           </div>
           <div class="pullout-panel-body">
             <div class="users-loading files-loading">
-              <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+              <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
               <span>Loading users...</span>
             </div>
           </div>
@@ -9546,7 +10634,7 @@ debug:
           </div>
           <div class="pullout-panel-body">
             <div class="backups-loading files-loading">
-              <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+              <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
               <span>Loading backups...</span>
             </div>
           </div>
@@ -9558,7 +10646,7 @@ debug:
           </div>
           <div class="pullout-panel-body">
             <div class="databases-loading files-loading">
-              <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+              <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
               <span>Loading databases...</span>
             </div>
           </div>
@@ -9577,7 +10665,7 @@ debug:
           </div>
           <div class="pullout-panel-body">
             <div class="activity-loading files-loading">
-              <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+              <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
               <span>Loading activity...</span>
             </div>
           </div>
@@ -9623,7 +10711,7 @@ debug:
               <div class="detail-card full-width resources-card" style="margin-top: 0; margin-bottom: 1.5rem; background: rgba(34, 211, 238, 0.05); border: 1px solid rgba(34, 211, 238, 0.2); padding: 1rem;">
                 ${sidebarState ? `
                   <div style="display: flex; align-items: center; gap: 0.75rem; color: var(--accent-warning); justify-content: center; padding: 1rem;">
-                    <i class="fas fa-spinner fa-spin"></i>
+                    <svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
                     <span style="font-weight: 600;">${sidebarState === 'maintenance' ? 'The node is currently under maintenance...' : (sidebarState === 'installing' ? 'Server is currently installing...' : 'Server is currently being transferred...')}</span>
                   </div>
                 ` : !resources ? `
@@ -9827,7 +10915,7 @@ debug:
         </div>
         </div>
       </div >
-      `;
+      `, modal);
 
             document.body.appendChild(modal);
             updateModalTextColors();
@@ -9875,7 +10963,7 @@ debug:
                 modal.classList.remove('visible');
                 setTimeout(() => {
                     if (modal.parentNode) modal.parentNode.removeChild(modal);
-                    modal.innerHTML = '';
+                    DOMUpdater.render('', modal);
                 }, 300);
             };
 
@@ -10038,7 +11126,7 @@ debug:
                                     try {
                                         const content = hook.renderPanel(serverId);
                                         if (typeof content === 'string') {
-                                            body.innerHTML = content;
+                                            DOMUpdater.render(content, body);
                                         }
 
                                         if (typeof hook.onOpen === 'function') {
@@ -10046,7 +11134,7 @@ debug:
                                         }
                                     } catch (e) {
                                         BnLog('ERROR', `Plugin panel render error (${pluginId}:${hookId}):`, e);
-                                        body.innerHTML = `<div style="padding: 1.5rem; color: var(--text-secondary);">Error rendering panel.</div>`;
+                                        DOMUpdater.render(`<div style="padding: 1.5rem; color: var(--text-secondary);">Error rendering panel.</div>`, body);
                                     }
                                 }
                             }
@@ -10120,7 +11208,7 @@ debug:
 
         const modal = document.createElement('div');
         modal.className = 'bananaa-modal confirm-modal visible';
-        modal.innerHTML = `
+        DOMUpdater.render(`
             <div class="modal-overlay"></div>
             <div class="modal-container" style="max-width: 450px;">
                 <div class="modal-header" style="justify-content: space-between; align-items: center; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-light);">
@@ -10175,7 +11263,7 @@ debug:
                     <button id="bh-submit-plan-change" class="btn btn-primary" style="flex: 1; padding: 0.75rem; border-radius: 8px; font-weight: 600; font-size: 0.9em; background: var(--accent-primary) !important; color: white !important; border: none !important; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);">Confirm Change</button>
                 </div>
             </div>
-        `;
+        `, modal);
 
         document.body.appendChild(modal);
 
@@ -10225,7 +11313,7 @@ debug:
 
             submitBtn.disabled = true;
             submitBtn.style.pointerEvents = 'none';
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Processing...', submitBtn);
 
             const success = await submitChangePlan(serverId, newPlan, newBilling);
             if (success) {
@@ -10233,7 +11321,7 @@ debug:
             } else {
                 submitBtn.disabled = false;
                 submitBtn.style.pointerEvents = 'auto';
-                submitBtn.innerHTML = 'Confirm Change';
+                DOMUpdater.render('Confirm Change', submitBtn);
                 updateCost();
             }
         };
@@ -10256,7 +11344,7 @@ debug:
 
         const modal = document.createElement('div');
         modal.className = 'bananaa-modal confirm-modal visible';
-        modal.innerHTML = `
+        DOMUpdater.render(`
             <div class="modal-overlay"></div>
             <div class="modal-container" style="max-width: 450px;">
                 <div class="modal-header" style="justify-content: space-between; align-items: center; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-light);">
@@ -10292,7 +11380,7 @@ debug:
                     <button id="bh-submit-software-change" class="btn btn-primary" style="flex: 1; padding: 0.75rem; border-radius: 8px; font-weight: 600; font-size: 0.9em; background: var(--accent-primary) !important; color: white !important; border: none !important; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);">Confirm Change</button>
                 </div>
             </div>
-        `;
+        `, modal);
 
         document.body.appendChild(modal);
 
@@ -10308,7 +11396,7 @@ debug:
             const eggId = modal.querySelector('#bh-change-software-select').value;
             submitBtn.disabled = true;
             submitBtn.style.pointerEvents = 'none';
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Processing...', submitBtn);
 
             const success = await submitChangeSoftware(serverId, eggId);
             if (success) {
@@ -10316,7 +11404,7 @@ debug:
             } else {
                 submitBtn.disabled = false;
                 submitBtn.style.pointerEvents = 'auto';
-                submitBtn.innerHTML = 'Confirm Change';
+                DOMUpdater.render('Confirm Change', submitBtn);
             }
         };
 
@@ -10340,7 +11428,7 @@ debug:
 
         const modal = document.createElement('div');
         modal.className = 'bananaa-modal confirm-modal visible';
-        modal.innerHTML = `
+        DOMUpdater.render(`
             <div class="modal-overlay"></div>
             <div class="modal-container" style="max-width: 450px;">
                 <div class="modal-header" style="justify-content: space-between; align-items: center; padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-light);">
@@ -10368,7 +11456,7 @@ debug:
                     <button id="bh-submit-delete-server" class="btn btn-primary btn-danger" disabled style="flex: 1; padding: 0.75rem; border-radius: 8px; font-weight: 600; font-size: 0.9em; background: var(--accent-error) !important; color: white !important; border: none !important; opacity: 0.5; cursor: not-allowed; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);">Delete Server</button>
                 </div>
             </div>
-        `;
+        `, modal);
 
         document.body.appendChild(modal);
 
@@ -10397,7 +11485,7 @@ debug:
         submitBtn.onclick = async () => {
             submitBtn.disabled = true;
             submitBtn.style.pointerEvents = 'none';
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+            DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Deleting...', submitBtn);
 
             const success = await submitDeleteServer(serverId);
             if (success) {
@@ -10405,7 +11493,7 @@ debug:
             } else {
                 submitBtn.disabled = false;
                 submitBtn.style.pointerEvents = 'auto';
-                submitBtn.innerHTML = 'Delete Server';
+                DOMUpdater.render('Delete Server', submitBtn);
             }
         };
 
@@ -11152,7 +12240,7 @@ debug:
         const vfsEnabled = state.settings.vfsEnabled;
         const showSearchInitial = vfsEnabled && (panelBody.dataset.searchActive === 'true');
 
-        panelBody.innerHTML = `
+        DOMUpdater.render(`
       <style>
         .file-browser-path { display: flex; align-items: center; gap: 2px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; }
         .file-browser-path::-webkit-scrollbar { display: none; }
@@ -11246,7 +12334,7 @@ debug:
           ${(state._templatePickerActive ? (state._templatePickerActive = false, []) : files).length > 0 ? renderFileList(identifier, directory, files) : ''}
         </div>
       </div>
-    `;
+    `, panelBody);
 
     }
 
@@ -11383,7 +12471,7 @@ debug:
             fullPath: node.fullPath
         }));
 
-        fileList.innerHTML = renderFileList(identifier, directory, files);
+        DOMUpdater.render(renderFileList(identifier, directory, files), fileList);
     }
     window.handleFileSearch = handleFileSearch;
 
@@ -11461,8 +12549,8 @@ debug:
         const panelBody = modal.querySelector('.files-panel .pullout-panel-body');
         if (!panelBody) return;
 
-        if (!panelBody.dataset.dragInitialized) {
-            panelBody.dataset.dragInitialized = 'true';
+        if (!panelBody._dragInitialized) {
+            panelBody._dragInitialized = true;
 
             panelBody.addEventListener('dragover', (e) => {
                 if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
@@ -11472,7 +12560,7 @@ debug:
                     const canUpload = hasPermission('file.create');
                     const overlay = document.createElement('div');
                     overlay.className = `drag-drop-overlay ${canUpload ? '' : 'no-permission'}`;
-                    overlay.innerHTML = canUpload ? `
+                    DOMUpdater.render(canUpload ? `
                         <div class="drag-drop-content">
                             <i class="fas fa-cloud-upload-alt"></i>
                             <span>Drop files to upload</span>
@@ -11482,7 +12570,7 @@ debug:
                             <i class="fas fa-lock" style="color: var(--accent-error, #ef4444);"></i>
                             <span style="color: var(--accent-error, #ef4444);">No permission to upload files</span>
                         </div>
-                    `;
+                    `, overlay);
                     panelBody.style.position = 'relative';
                     panelBody.appendChild(overlay);
                 }
@@ -11557,12 +12645,12 @@ debug:
         }
 
         if (!forceRefresh) {
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
           <div class="files-loading">
-            <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+            <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
             <span>Loading files...</span>
           </div>
-        `;
+        `, panelBody);
         }
 
         const fetchResult = await fetchServerFiles(identifier, directory);
@@ -11572,7 +12660,7 @@ debug:
         if (refreshBtn) refreshBtn.classList.remove('refreshing');
 
         if (fetchResult && (fetchResult.status === 403 || fetchResult.status === 401)) {
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="empty-state">
           <div class="empty-icon">
             <i class="fas fa-lock" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 1rem; opacity: 0.5;"></i>
@@ -11580,14 +12668,14 @@ debug:
           <h3>Permission Denied</h3>
           <p>You do not have permission to view files for this server.</p>
         </div>
-      `;
+      `, panelBody);
             return;
         }
 
         const files = Array.isArray(fetchResult) ? fetchResult : null;
 
         if (!files) {
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="files-error">
           <i class="fas fa-exclamation-triangle"></i>
           <span class="files-error-message">Failed to load files</span>
@@ -11597,7 +12685,7 @@ debug:
             <p>Direct file management is unavailable. Connect via SFTP for better reliability.</p>
           </div>
         </div>
-      `;
+      `, panelBody);
             return;
         }
 
@@ -11730,7 +12818,7 @@ debug:
         modal.className = 'bananaa-modal';
         modal.style.zIndex = '2147483647';
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="modal-overlay"></div>
       <div class="modal-container" style="max-width: 400px; border: 1px solid var(--border-light); background: var(--modal-bg-primary);">
         <div class="modal-header" style="margin: 0; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); background: var(--modal-bg-secondary);">
@@ -11747,7 +12835,7 @@ debug:
           <button class="btn ${isDanger ? 'btn-danger' : 'btn-primary'} btn-confirm" style="padding: 0.5rem 1.25rem; border-radius: 8px;">${sanitizeHTML(confirmText)}</button>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         updateModalTextColors();
@@ -11801,7 +12889,7 @@ debug:
         modal.className = 'bananaa-modal';
         modal.style.zIndex = '2147483647';
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="modal-overlay"></div>
       <div class="modal-container" style="max-width: 400px; border: 1px solid var(--border-light); background: var(--modal-bg-primary);">
         <div class="modal-header" style="margin: 0; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); background: var(--modal-bg-secondary);">
@@ -11818,7 +12906,7 @@ debug:
           <button class="btn btn-primary btn-confirm" style="padding: 0.5rem 1.25rem; border-radius: 8px;">${sanitizeHTML(confirmText)}</button>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         updateModalTextColors();
@@ -11864,7 +12952,7 @@ debug:
         const itemType = fileNames.length > 1 ? 'Items' : (fileNames[0].includes('.') ? 'File' : 'Folder');
         const title = fileNames.length > 1 ? `Move ${fileNames.length} Items` : `Move ${itemType}`;
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="modal-overlay"></div>
       <div class="modal-container" style="max-width: 420px; border: 1px solid var(--border-light); background: var(--modal-bg-primary);">
         <div class="modal-header" style="margin: 0; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); background: var(--modal-bg-secondary);">
@@ -11890,7 +12978,7 @@ debug:
           </button>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         updateModalTextColors();
@@ -11916,7 +13004,7 @@ debug:
             const dest = moveInput?.value?.trim();
             if (!dest) { showToast('Please enter a destination', 'error'); return; }
 
-            if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Moving...'; }
+            if (submitBtn) { submitBtn.disabled = true; DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Moving...', submitBtn); }
 
             let allSucceeded = true;
             for (const fileName of fileNames) {
@@ -11931,7 +13019,7 @@ debug:
                 loadFileBrowser(identifier, currentFileBrowserPath);
             } else {
                 showToast('Some files failed to move', 'error');
-                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-arrows-alt"></i> Move'; }
+                if (submitBtn) { submitBtn.disabled = false; DOMUpdater.render('<i class="fas fa-arrows-alt"></i> Move', submitBtn); }
             }
         };
 
@@ -12130,12 +13218,12 @@ debug:
 
         if (template.blankFiles) {
             state.isDeploying = true;
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
                 <div class="template-deploy-progress">
-                    <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem; color: var(--accent-primary);"></i>
+                    <svg class="bh-spinner" style="font-size: 1.5rem; color: var(--accent-primary);" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
                     <span>Creating blank project...</span>
                 </div>
-            `;
+            `, panelBody);
             try {
                 for (const [filePath, content] of Object.entries(template.blankFiles)) {
                     await saveFileContents(identifier, filePath, content);
@@ -12150,7 +13238,7 @@ debug:
             return;
         }
 
-        panelBody.innerHTML = `
+        DOMUpdater.render(`
             <div class="template-deploy-progress">
                 <div class="template-deploy-icon">
                     <i class="fas fa-download" style="font-size: 1.3rem; color: var(--accent-primary);"></i>
@@ -12164,7 +13252,7 @@ debug:
                 </div>
                 <span id="template-deploy-count" style="font-size: 0.75rem; color: var(--text-secondary);">0 / ?</span>
             </div>
-        `;
+        `, panelBody);
 
         try {
             state.isDeploying = true;
@@ -12230,7 +13318,7 @@ debug:
             }
 
             vfsInvalidate(identifier, '/');
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
                 <div class="template-deploy-success">
                     <div class="success-icon"><i class="fas fa-check-circle"></i></div>
                     <h3>Deployed!</h3>
@@ -12246,7 +13334,7 @@ debug:
                         ` : ''}
                     </div>
                 </div>
-            `;
+            `, panelBody);
             state.isDeploying = false;
             showToast(`${template.name} deployed successfully!`, 'success');
 
@@ -12279,7 +13367,7 @@ debug:
                 const statusEl = document.getElementById(`upload-status-${idx}`);
                 const barEl = document.getElementById(`upload-bar-${idx}`);
                 const cancelBtn = document.getElementById(`upload-cancel-${idx}`);
-                if (statusEl) statusEl.innerHTML = '<i class="fas fa-ban" style="color: var(--text-secondary);"></i>';
+                if (statusEl) DOMUpdater.render('<i class="fas fa-ban" style="color: var(--text-secondary);"></i>', statusEl);
                 if (barEl) {
                     barEl.style.width = '100%';
                     barEl.style.background = 'var(--text-secondary)';
@@ -12291,7 +13379,7 @@ debug:
                 const statusEl = document.getElementById(`upload-status-${idx}`);
                 const barEl = document.getElementById(`upload-bar-${idx}`);
                 const cancelBtn = document.getElementById(`upload-cancel-${idx}`);
-                if (statusEl) statusEl.innerHTML = '<i class="fas fa-ban" style="color: var(--text-secondary);"></i>';
+                if (statusEl) DOMUpdater.render('<i class="fas fa-ban" style="color: var(--text-secondary);"></i>', statusEl);
                 if (barEl) {
                     barEl.style.width = '100%';
                     barEl.style.background = 'var(--text-secondary)';
@@ -12337,7 +13425,7 @@ debug:
                 </div>
             `).join('');
 
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
                 <div class="upload-overlay">
                     <div class="upload-overlay-header">
                         <i class="fas fa-cloud-upload-alt" style="font-size: 1.2rem; color: var(--accent-primary);"></i>
@@ -12350,7 +13438,7 @@ debug:
                         ${fileRows}
                     </div>
                 </div>
-            `;
+            `, panelBody);
 
             let completed = 0;
             let failed = 0;
@@ -12367,14 +13455,14 @@ debug:
                 const barEl = document.getElementById(`upload-bar-${index}`);
                 const cancelBtn = document.getElementById(`upload-cancel-${index}`);
 
-                if (statusEl) statusEl.innerHTML = '<i class="fas fa-spinner fa-spin" style="color: var(--accent-primary);"></i>';
+                if (statusEl) DOMUpdater.render('<svg class="bh-spinner" style="color: var(--accent-primary);" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>', statusEl);
                 if (barEl) barEl.style.width = '10%';
 
                 const controller = new AbortController();
                 state.activeUploads.set(index, controller);
 
                 try {
-                    if (statusEl) statusEl.innerHTML = '<i class="fas fa-spinner fa-spin" style="color: var(--accent-primary);"></i>';
+                    if (statusEl) DOMUpdater.render('<svg class="bh-spinner" style="color: var(--accent-primary);" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>', statusEl);
                     const signResponse = await callProxyFetch(
                         `https://control.bot-hosting.net/api/client/servers/${identifier}/files/upload`,
                         { signal: controller.signal }
@@ -12384,7 +13472,7 @@ debug:
                     const uploadUrl = signResponse.data.attributes.url;
 
                     if (barEl) barEl.style.width = '30%';
-                    if (statusEl) statusEl.innerHTML = '<i class="fas fa-spinner fa-spin" style="color: var(--accent-primary);"></i>';
+                    if (statusEl) DOMUpdater.render('<svg class="bh-spinner" style="color: var(--accent-primary);" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>', statusEl);
 
                     const formData = new FormData();
                     formData.append('files', file);
@@ -12430,7 +13518,7 @@ debug:
 
                     if (barEl) barEl.style.width = '100%';
                     if (barEl) barEl.style.background = 'var(--accent-success, #10b981)';
-                    if (statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle" style="color: var(--accent-success, #10b981);"></i>';
+                    if (statusEl) DOMUpdater.render('<i class="fas fa-check-circle" style="color: var(--accent-success, #10b981);"></i>', statusEl);
                     if (cancelBtn) cancelBtn.style.display = 'none';
 
                     emitPluginEvent('fileSaved', { identifier, filePath: (directory === '/' ? '/' : directory + '/') + file.name });
@@ -12443,7 +13531,7 @@ debug:
                         failed++;
                         if (barEl) barEl.style.width = '100%';
                         if (barEl) barEl.style.background = '#ef4444';
-                        if (statusEl) statusEl.innerHTML = '<i class="fas fa-times-circle" style="color: #ef4444;"></i>';
+                        if (statusEl) DOMUpdater.render('<i class="fas fa-times-circle" style="color: #ef4444;"></i>', statusEl);
                         if (cancelBtn) cancelBtn.style.display = 'none';
                     }
                 } finally {
@@ -12654,7 +13742,7 @@ debug:
             }
             const div = document.createElement('div');
             div.className = `context-menu-item ${item.isDanger ? 'danger' : ''} ${item.submenu ? 'has-submenu' : ''}`;
-            div.innerHTML = `<i class="${escapeHTML(item.icon)}"></i> ${escapeHTML(item.label)}${item.submenu ? '<i class="fas fa-chevron-right" style="margin-left: auto; font-size: 0.65rem; opacity: 0.5;"></i>' : ''}`;
+            DOMUpdater.render(`<i class="${escapeHTML(item.icon)}"></i> ${escapeHTML(item.label)}${item.submenu ? '<i class="fas fa-chevron-right" style="margin-left: auto; font-size: 0.65rem; opacity: 0.5;"></i>' : ''}`, div);
 
             if (item.submenu) {
                 let submenuEl = null;
@@ -12678,7 +13766,7 @@ debug:
                         }
                         const subDiv = document.createElement('div');
                         subDiv.className = `context-menu-item ${sub.isDanger ? 'danger' : ''} ${sub.isActive ? 'submenu-active' : ''}`;
-                        subDiv.innerHTML = `<i class="${escapeHTML(sub.icon)}"></i> ${escapeHTML(sub.label)}`;
+                        DOMUpdater.render(`<i class="${escapeHTML(sub.icon)}"></i> ${escapeHTML(sub.label)}`, subDiv);
                         subDiv.onclick = (e) => {
                             e.stopPropagation();
                             closeContextMenu();
@@ -13122,7 +14210,7 @@ debug:
         modal.style.setProperty('--modal-text-primary', isDark ? '#ffffff' : '#1e293b');
         modal.style.setProperty('--modal-text-secondary', isDark ? '#e2e8f0' : '#64748b');
         modal.style.setProperty('--modal-tertiary-bg', isDark ? '#334155' : '#f8fafc');
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="modal-overlay"></div>
       <div class="file-editor-container">
         <div class="file-editor-header">
@@ -13144,7 +14232,7 @@ debug:
         </div>
         <div class="file-editor-body">
           <div class="files-loading" style="height: 100%;">
-            <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+            <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
             <span>Loading file...</span>
           </div>
         </div>
@@ -13153,7 +14241,7 @@ debug:
           <span class="file-status">Loading...</span>
         </div>
       </div>
-    `;
+    `, modal);
 
         state.editorActive = true;
         document.body.appendChild(modal);
@@ -13212,41 +14300,41 @@ debug:
                 : 'Failed to load file contents';
             const icon = isPermissionError ? 'fas fa-lock' : 'fas fa-exclamation-triangle';
 
-            modal.querySelector('.file-editor-body').innerHTML = `
+            DOMUpdater.render(`
         <div class="files-error" style="height: 100%;">
           <i class="${icon}"></i>
           <span>${errorMsg}</span>
         </div>
-      `;
+      `, modal.querySelector('.file-editor-body'));
             modal.querySelector('.file-status').textContent = 'Error';
             return;
         }
 
         initialContent = content;
         if (!editorReady) {
-            modal.querySelector('.file-editor-body').innerHTML = `
+            DOMUpdater.render(`
         <textarea id="file-editor-textarea" class="file-editor-textarea">${content.replace(/</g, '&lt;')}</textarea>
-      `;
+      `, modal.querySelector('.file-editor-body'));
             document.getElementById('file-editor-textarea').oninput = checkChanges;
         } else if (useLightweight) {
             const editorBg = isDark ? '#1d1f21' : '#fafafa';
             const editorFg = isDark ? '#c5c8c6' : '#263238';
             applyPrismTheme();
-            modal.querySelector('.file-editor-body').innerHTML = `
+            DOMUpdater.render(`
         <div id="code-jar-container" class="code-jar-editor" style="width: 100%; height: 100%; overflow: auto; background: ${editorBg}; color: ${editorFg}; padding: 1rem; font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; line-height: 1.5; outline: none;" contenteditable="true"></div>
-      `;
+      `, modal.querySelector('.file-editor-body'));
             const editorEl = document.getElementById('code-jar-container');
             const jar = CodeJar(editorEl, (editor) => {
                 if (window.Prism) {
                     const lang = getMonacoLanguage(fileName);
-                    editor.innerHTML = Prism.highlight(editor.textContent, Prism.languages[lang] || Prism.languages.javascript, lang);
+                    DOMUpdater.render(Prism.highlight(editor.textContent, Prism.languages[lang] || Prism.languages.javascript, lang), editor);
                 }
                 checkChanges();
             });
             jar.updateCode(content);
             editorView = jar;
         } else {
-            modal.querySelector('.file-editor-body').innerHTML = `<div id="monaco-editor-container" style="width: 100%; height: 100%;"></div>`;
+            DOMUpdater.render(`<div id="monaco-editor-container" style="width: 100%; height: 100%;"></div>`, modal.querySelector('.file-editor-body'));
 
             editorView = monaco.editor.create(document.getElementById('monaco-editor-container'), {
                 value: content,
@@ -13315,14 +14403,14 @@ debug:
             saveBtn.disabled = true;
             modal.dataset.isSaving = 'true';
             if (closeBtn) closeBtn.style.opacity = '0.5';
-            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Saving...', saveBtn);
             modal.querySelector('.file-status').textContent = 'Saving...';
 
             try {
                 if (!hasPermission('file.write')) {
                     showToast('You do not have permission to write files', 'error');
                     saveBtn.disabled = false;
-                    saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+                    DOMUpdater.render('<i class="fas fa-save"></i> Save', saveBtn);
                     return;
                 }
                 const newContent = editorView?.getValue ? editorView.getValue() : (editorView?.toString && editorView.toString() !== '[object Object]' ? editorView.toString() : (document.getElementById('file-editor-textarea')?.value || ''));
@@ -13354,7 +14442,7 @@ debug:
             } finally {
                 modal.dataset.isSaving = 'false';
                 if (closeBtn) closeBtn.style.opacity = '1';
-                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+                DOMUpdater.render('<i class="fas fa-save"></i> Save', saveBtn);
                 checkChanges();
             }
         };
@@ -13416,7 +14504,7 @@ debug:
             content = `
         <div class="sftp-error" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 2rem; text-align: center; gap: 1.5rem;">
           <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(59, 130, 246, 0.1); color: #3b82f6; display: flex; align-items: center; justify-content: center; font-size: 1.75rem;">
-            <i class="fas fa-spinner fa-spin"></i>
+            <svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
           </div>
           <div style="display: flex; flex-direction: column; gap: 0.5rem;">
             <h3 style="margin: 0; color: var(--text-primary); font-size: 1.25rem;">Preparing Server</h3>
@@ -13426,7 +14514,7 @@ debug:
       `;
         }
 
-        panelBody.innerHTML = content;
+        DOMUpdater.render(content, panelBody);
     }
 
     async function loadNetworkAllocations(identifier) {
@@ -13454,21 +14542,21 @@ debug:
 
         const header = panel.querySelector('.pullout-panel-header');
         if (header) {
-            header.innerHTML = `
+            DOMUpdater.render(`
         <div style="display: flex; flex-direction: column; gap: 0.1rem;">
           <h4><i class="fas fa-network-wired"></i> Network</h4>
           <span class="panel-header-badge" id="network-limit-badge">Loading...</span>
         </div>
-      `;
+      `, header);
         }
 
         if (!serverData || !serverData.attributes?.relationships?.allocations?.data) {
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="files-error">
           <i class="fas fa-exclamation-triangle"></i>
           <span class="files-error-message">No allocation data available</span>
         </div>
-      `;
+      `, panelBody);
             return;
         }
 
@@ -13476,7 +14564,7 @@ debug:
         const badge = document.getElementById('network-limit-badge');
         if (badge) badge.textContent = `${allocations.length} / ${maxAllocations} Allocations`;
 
-        panelBody.innerHTML = `
+        DOMUpdater.render(`
       <div class="network-panel">
         ${allocations.map(alloc => {
             const attrs = alloc.attributes;
@@ -13501,7 +14589,7 @@ debug:
           `;
         }).join('')}
       </div>
-    `;
+    `, panelBody);
     }
 
     window.loadNetworkAllocations = loadNetworkAllocations;
@@ -13529,7 +14617,7 @@ debug:
         const port = sftp.port || 2022;
         const address = `${node}.bot-hosting.net:${port}`;
 
-        panelBody.innerHTML = `
+        DOMUpdater.render(`
       <div class="panel-list" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
         <div class="sftp-field-group">
           <label class="sftp-label">SFTP Address</label>
@@ -13571,7 +14659,7 @@ debug:
           <i class="fas fa-external-link-alt"></i> Launch in SFTP Client
         </button>
       </div>
-    `;
+    `, panelBody);
     }
 
     window.loadSFTPPanel = loadSFTPPanel;
@@ -13592,11 +14680,11 @@ debug:
         const identifier = details.identifier || details.attributes?.identifier;
         if (!identifier) return;
 
-        panelBody.innerHTML = `
+        DOMUpdater.render(`
       <div class="files-loading">
-        <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+        <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
         <span>Loading startup config...</span>
-      </div>`;
+      </div>`, panelBody);
 
         try {
             const response = await callProxyFetch(`https://control.bot-hosting.net/api/client/servers/${identifier}/startup`, {
@@ -13605,7 +14693,7 @@ debug:
             });
 
             if (response?.status === 403 || response?.status === 401) {
-                panelBody.innerHTML = `
+                DOMUpdater.render(`
             <div class="empty-state">
               <div class="empty-icon">
                 <i class="fas fa-lock" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 1rem; opacity: 0.5;"></i>
@@ -13613,12 +14701,12 @@ debug:
               <h3>Permission Denied</h3>
               <p>You do not have permission to view startup settings for this server.</p>
             </div>
-          `;
+          `, panelBody);
                 return;
             }
 
             if (!response || !response.ok) {
-                panelBody.innerHTML = `<div class="files-error"><i class="fas fa-exclamation-triangle"></i><span class="files-error-message">Failed to load startup config</span></div>`;
+                DOMUpdater.render(`<div class="files-error"><i class="fas fa-exclamation-triangle"></i><span class="files-error-message">Failed to load startup config</span></div>`, panelBody);
                 return;
             }
 
@@ -13759,7 +14847,7 @@ debug:
             }).join('');
 
             const canReadFiles = hasPermission('file.read');
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="panel-list startup-panel-content" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1.25rem;">
           <div class="startup-action-row">
             <div class="startup-action-label">
@@ -13784,11 +14872,11 @@ debug:
               <i class="fas fa-save"></i> Save Variables
             </button>` : ''}
           </div>` : ''}
-        </div>`;
+        </div>`, panelBody);
 
         } catch (err) {
             BnLog('ERROR', '[BananaStartup] Failed to load:', err);
-            panelBody.innerHTML = `<div class="files-error"><i class="fas fa-exclamation-triangle"></i><span class="files-error-message">Failed to load startup config</span></div>`;
+            DOMUpdater.render(`<div class="files-error"><i class="fas fa-exclamation-triangle"></i><span class="files-error-message">Failed to load startup config</span></div>`, panelBody);
         }
     }
 
@@ -13799,7 +14887,7 @@ debug:
 
         const original = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>', btn);
 
         try {
             const newImage = select.value;
@@ -13822,7 +14910,7 @@ debug:
 
                     if (finalAttrs && typeof finalAttrs === 'object') {
                         finalAttrs.docker_image = newImage;
-                        _ls.set('bh-server-details-cache', JSON.stringify(state.serverDetailsCache));
+                        AsyncCache.set('bh-server-details-cache', state.serverDetailsCache);
                     }
                 }
             } else {
@@ -13832,7 +14920,7 @@ debug:
             showToast('Failed to update Docker image', 'error');
         } finally {
             btn.disabled = false;
-            btn.innerHTML = original;
+            DOMUpdater.render(original, btn);
         }
     };
 
@@ -13845,7 +14933,7 @@ debug:
 
         const original = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Saving...', btn);
 
         let saved = 0;
         let failed = 0;
@@ -13862,7 +14950,7 @@ debug:
 
         if (dirty.length === 0) {
             btn.disabled = false;
-            btn.innerHTML = original;
+            DOMUpdater.render(original, btn);
             showToast('No changes to save', 'info');
             return;
         }
@@ -13902,7 +14990,7 @@ debug:
         }
 
         btn.disabled = false;
-        btn.innerHTML = original;
+        DOMUpdater.render(original, btn);
     };
 
     window.__manageBananaAgent = async (identifier) => {
@@ -13917,7 +15005,7 @@ debug:
         const originalContent = btn.innerHTML;
         const originalViewContent = viewBtn ? viewBtn.innerHTML : 'View';
 
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 0.8rem;"></i>';
+        DOMUpdater.render('<svg class="bh-spinner" style="font-size: 0.8rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>', btn);
         btn.disabled = true;
         if (viewBtn) viewBtn.disabled = true;
 
@@ -13928,11 +15016,11 @@ debug:
             const canReadFiles = hasPermission('file.read');
 
             if (btn) {
-                btn.innerHTML = originalContent;
+                DOMUpdater.render(originalContent, btn);
                 btn.disabled = !canManageBanana;
             }
             if (viewBtn) {
-                viewBtn.innerHTML = originalViewContent;
+                DOMUpdater.render(originalViewContent, viewBtn);
                 viewBtn.disabled = !canReadFiles;
             }
         }, 20000);
@@ -14002,11 +15090,11 @@ debug:
             const canReadFiles = hasPermission('file.read');
 
             if (btn) {
-                btn.innerHTML = originalContent;
+                DOMUpdater.render(originalContent, btn);
                 btn.disabled = !canManageBanana;
             }
             if (viewBtn) {
-                viewBtn.innerHTML = originalViewContent;
+                DOMUpdater.render(originalViewContent, viewBtn);
                 viewBtn.disabled = !canReadFiles;
             }
         }
@@ -14248,7 +15336,7 @@ ignite();
         modalDiv.className = 'bananaa-modal';
         modalDiv.style.zIndex = '1000000';
 
-        modalDiv.innerHTML = `
+        DOMUpdater.render(`
           <div class="modal-overlay"></div>
           <div class="modal-container" style="max-width: 400px; border: 1px solid var(--border-light); background: var(--modal-bg-primary);">
             <div class="modal-header" style="margin: 0; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); background: var(--modal-bg-secondary);">
@@ -14282,7 +15370,7 @@ ignite();
               <button class="btn btn-primary btn-save" style="padding: 0.5rem 1.25rem; border-radius: 8px; opacity: 0.5; pointer-events: none;" disabled>Save</button>
             </div>
           </div>
-        `;
+        `, modalDiv);
 
         document.body.appendChild(modalDiv);
 
@@ -14527,7 +15615,7 @@ ignite();
 
         if (viewBtn) {
             viewBtn.disabled = true;
-            viewBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 0.8rem;"></i>';
+            DOMUpdater.render('<svg class="bh-spinner" style="font-size: 0.8rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>', viewBtn);
         }
         if (manageBtn) {
             manageBtn.disabled = true;
@@ -14538,11 +15626,11 @@ ignite();
             const canManageBanana = hasPermission('file.create') && hasPermission('file.delete') && hasPermission('file.update') && hasPermission('startup.update');
 
             if (viewBtn) {
-                viewBtn.innerHTML = originalViewContent;
+                DOMUpdater.render(originalViewContent, viewBtn);
                 viewBtn.disabled = !canReadFiles;
             }
             if (manageBtn) {
-                manageBtn.innerHTML = originalManageContent;
+                DOMUpdater.render(originalManageContent, manageBtn);
                 manageBtn.disabled = !canManageBanana;
             }
         }, 20000);
@@ -14558,11 +15646,11 @@ ignite();
             const canManageBanana = hasPermission('file.create') && hasPermission('file.delete') && hasPermission('file.update') && hasPermission('startup.update');
 
             if (viewBtn) {
-                viewBtn.innerHTML = originalViewContent;
+                DOMUpdater.render(originalViewContent, viewBtn);
                 viewBtn.disabled = !canReadFiles;
             }
             if (manageBtn) {
-                manageBtn.innerHTML = originalManageContent;
+                DOMUpdater.render(originalManageContent, manageBtn);
                 manageBtn.disabled = !canManageBanana;
             }
         }
@@ -14605,7 +15693,7 @@ ignite();
         </div>`).join('');
         };
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="modal-overlay" onclick="window.__closeSecretsModal()"></div>
       <div class="modal-container" style="max-width: 500px; max-height: 85vh; display: flex; flex-direction: column; background: var(--modal-bg-primary) !important; padding: 0; overflow: hidden; border-radius: var(--border-radius-lg); box-shadow: var(--shadow-lg); border: none !important;">
         <div class="modal-header" style="background: var(--modal-tertiary-bg) !important; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; margin: 0;">
@@ -14636,7 +15724,7 @@ ignite();
             <i class="fas fa-save"></i> Save .env Configuration
           </button>
         </div>
-      </div>`;
+      </div>`, modal);
         document.body.appendChild(modal);
 
         requestAnimationFrame(() => {
@@ -14656,7 +15744,7 @@ ignite();
         const row = document.createElement('div');
         row.className = 'secrets-row';
         row.dataset.idx = idx;
-        row.innerHTML = `
+        DOMUpdater.render(`
         <input type="text" class="secrets-key-input modern-input" value="" placeholder="KEY" spellcheck="false">
         <div class="secrets-value-wrapper">
           <input type="text" class="secrets-value-input modern-input" value="" placeholder="value" spellcheck="false">
@@ -14666,7 +15754,7 @@ ignite();
         </div>
         <button class="secrets-delete-btn" onclick="this.closest('.secrets-row').remove();" title="Delete">
           <i class="fas fa-trash-alt"></i>
-        </button>`;
+        </button>`, row);
         container.appendChild(row);
         row.querySelector('.secrets-key-input')?.focus();
     };
@@ -14677,7 +15765,7 @@ ignite();
         if (viewBtn) {
             const canReadFiles = hasPermission('file.read');
             viewBtn.disabled = !canReadFiles;
-            viewBtn.innerHTML = 'View';
+            DOMUpdater.render('View', viewBtn);
         }
     };
 
@@ -14686,7 +15774,7 @@ ignite();
         if (!btn) return;
         const original = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Saving...', btn);
 
         const rows = document.querySelectorAll('.secrets-row');
         const lines = [];
@@ -14711,7 +15799,7 @@ ignite();
             showToast('Failed to save secrets', 'error');
         } finally {
             btn.disabled = false;
-            btn.innerHTML = original;
+            DOMUpdater.render(original, btn);
         }
     };
 
@@ -14743,7 +15831,7 @@ ignite();
 
         const header = panel.querySelector('.pullout-panel-header');
         if (header) {
-            header.innerHTML = `
+            DOMUpdater.render(`
         <div style="display: flex; flex-direction: column; gap: 0.1rem;">
           <h4><i class="fas fa-users"></i> Users</h4>
           <span class="panel-header-badge" id="users-limit-badge">Loading...</span>
@@ -14755,21 +15843,21 @@ ignite();
           </button>
         </div>
         ` : ''}
-      `;
+      `, header);
         }
 
-        panelBody.innerHTML = `
+        DOMUpdater.render(`
       <div class="users-loading files-loading">
-        <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+        <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
         <span>Loading users...</span>
       </div>
-    `;
+    `, panelBody);
 
         try {
             const response = await callProxyFetch(`https://control.bot-hosting.net/api/client/servers/${identifier}/users`);
 
             if (response.status === 403 || response.status === 401) {
-                panelBody.innerHTML = `
+                DOMUpdater.render(`
             <div class="empty-state">
               <div class="empty-icon">
                 <i class="fas fa-lock" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 1rem; opacity: 0.5;"></i>
@@ -14777,7 +15865,7 @@ ignite();
               <h3>Permission Denied</h3>
               <p>You do not have permission to view subusers for this server.</p>
             </div>
-          `;
+          `, panelBody);
                 return;
             }
 
@@ -14793,17 +15881,17 @@ ignite();
             }
 
             if (!users.length) {
-                panelBody.innerHTML = `
+                DOMUpdater.render(`
           <div class="files-error">
             <i class="fas fa-users-slash"></i>
             <span>No subusers found</span>
             ${canCreate ? `<p style="color: var(--text-tertiary); font-size: 0.8rem; margin-top: 0.5rem;">Click "Invite" to add a subuser</p>` : ''}
           </div>
-        `;
+        `, panelBody);
                 return;
             }
 
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="panel-list">
           ${users.map(u => {
                 const uuid = u.attributes.uuid;
@@ -14836,10 +15924,10 @@ ignite();
           `;
             }).join('')}
         </div>
-      `;
+      `, panelBody);
         } catch (e) {
             BnLog('ERROR', 'Failed to load users:', e);
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="files-error">
           <i class="fas fa-exclamation-triangle"></i>
           <span>Failed to load users</span>
@@ -14847,7 +15935,7 @@ ignite();
             <i class="fas fa-redo"></i> Retry
           </button>
         </div>
-      `;
+      `, panelBody);
         }
     }
 
@@ -14898,7 +15986,7 @@ ignite();
     `;
         }).join('');
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <style>
         .bananaa-modal { user-select: none; }
         .perm-item-status { 
@@ -14962,7 +16050,7 @@ ignite();
           </button>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         updateModalTextColors();
@@ -15051,7 +16139,7 @@ ignite();
         if (isEdit && !existingPerms) {
             (async () => {
                 const submitBtn = document.getElementById('subuser-submit-btn');
-                if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...'; }
+                if (submitBtn) { submitBtn.disabled = true; DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Loading...', submitBtn); }
                 try {
                     const response = await callProxyFetch(`https://control.bot-hosting.net/api/client/servers/${identifier}/users/${existingUuid}`, { headers: getControlPanelHeaders() });
                     const currentPerms = response.data?.attributes?.permissions || [];
@@ -15065,7 +16153,7 @@ ignite();
                     BnLog('ERROR', 'Failed to load subuser details:', e);
                     showToast('Failed to load current permissions', 'error');
                 }
-                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-save"></i> Save Changes'; }
+                if (submitBtn) { submitBtn.disabled = false; DOMUpdater.render('<i class="fas fa-save"></i> Save Changes', submitBtn); }
             })();
         }
 
@@ -15079,7 +16167,7 @@ ignite();
             const submitBtn = document.getElementById('subuser-submit-btn');
 
             if (isEdit) {
-                if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'; }
+                if (submitBtn) { submitBtn.disabled = true; DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Saving...', submitBtn); }
                 try {
                     const response = await callProxyFetch(`https://control.bot-hosting.net/api/client/servers/${identifier}/users/${existingUuid}`, {
                         method: 'POST',
@@ -15098,7 +16186,7 @@ ignite();
                     BnLog('ERROR', 'Update subuser error:', e);
                     showToast(e.message || 'Failed to update permissions', 'error');
                 }
-                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-save"></i> Save Changes'; }
+                if (submitBtn) { submitBtn.disabled = false; DOMUpdater.render('<i class="fas fa-save"></i> Save Changes', submitBtn); }
             } else {
                 const emailInput = document.getElementById('subuser-email-input');
                 const email = emailInput?.value?.trim();
@@ -15111,7 +16199,7 @@ ignite();
                     showToast('Please select at least one permission', 'error');
                     return;
                 }
-                if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...'; }
+                if (submitBtn) { submitBtn.disabled = true; DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Adding...', submitBtn); }
                 try {
                     const response = await callProxyFetch(`https://control.bot-hosting.net/api/client/servers/${identifier}/users`, {
                         method: 'POST',
@@ -15130,7 +16218,7 @@ ignite();
                     BnLog('ERROR', 'Add subuser error:', e);
                     showToast(e.message || 'Failed to add subuser', 'error');
                 }
-                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-user-plus"></i> Add Subuser'; }
+                if (submitBtn) { submitBtn.disabled = false; DOMUpdater.render('<i class="fas fa-user-plus"></i> Add Subuser', submitBtn); }
             }
         };
 
@@ -15198,7 +16286,7 @@ ignite();
         const canCreate = hasPermission('backup.create');
         const header = panel.querySelector('.pullout-panel-header');
         if (header) {
-            header.innerHTML = `
+            DOMUpdater.render(`
         <div style="display: flex; flex-direction: column; gap: 0.1rem;">
           <h4><i class="fas fa-archive"></i> Backups</h4>
           <span class="panel-header-badge" id="backup-limit-badge">Loading...</span>
@@ -15210,21 +16298,21 @@ ignite();
           </button>
         </div>
         ` : ''}
-      `;
+      `, header);
         }
 
-        panelBody.innerHTML = `
+        DOMUpdater.render(`
       <div class="backups-loading files-loading">
-        <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+        <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
         <span>Loading backups...</span>
       </div>
-    `;
+    `, panelBody);
 
         try {
             const response = await callProxyFetch(`https://control.bot-hosting.net/api/client/servers/${identifier}/backups`);
 
             if (response.status === 403 || response.status === 401) {
-                panelBody.innerHTML = `
+                DOMUpdater.render(`
             <div class="empty-state">
               <div class="empty-icon">
                 <i class="fas fa-lock" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 1rem; opacity: 0.5;"></i>
@@ -15232,7 +16320,7 @@ ignite();
               <h3>Permission Denied</h3>
               <p>You do not have permission to view backups for this server.</p>
             </div>
-          `;
+          `, panelBody);
                 return;
             }
 
@@ -15248,16 +16336,16 @@ ignite();
             }
 
             if (!backups.length) {
-                panelBody.innerHTML = `
+                DOMUpdater.render(`
           <div class="files-error">
             <i class="fas fa-archive"></i>
             <span>No backups found</span>
           </div>
-        `;
+        `, panelBody);
                 return;
             }
 
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="panel-list">
           ${backups.map(b => {
                 const isLocked = b.attributes.is_locked;
@@ -15293,9 +16381,9 @@ ignite();
           `;
             }).join('')}
         </div>
-      `;
+      `, panelBody);
         } catch (e) {
-            panelBody.innerHTML = `<div class="files-error"><span>Failed to load backups</span></div>`;
+            DOMUpdater.render(`<div class="files-error"><span>Failed to load backups</span></div>`, panelBody);
         }
     }
 
@@ -15431,7 +16519,7 @@ ignite();
 
         const header = panel.querySelector('.pullout-panel-header');
         if (header) {
-            header.innerHTML = `
+            DOMUpdater.render(`
         <div style="display: flex; flex-direction: column; gap: 0.1rem;">
           <h4><i class="fas fa-database"></i> Databases</h4>
           <span class="panel-header-badge" id="database-limit-badge">Loading...</span>
@@ -15443,21 +16531,21 @@ ignite();
           </button>
         </div>
         ` : ''}
-      `;
+      `, header);
         }
 
-        panelBody.innerHTML = `
+        DOMUpdater.render(`
       <div class="databases-loading files-loading">
-        <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem;"></i>
+        <svg class="bh-spinner" style="font-size: 1.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>
         <span>Loading databases...</span>
       </div>
-    `;
+    `, panelBody);
 
         try {
             const response = await callProxyFetch(`https://control.bot-hosting.net/api/client/servers/${identifier}/databases?include=password`);
 
             if (response.status === 403 || response.status === 401) {
-                panelBody.innerHTML = `
+                DOMUpdater.render(`
             <div class="empty-state">
               <div class="empty-icon">
                 <i class="fas fa-lock" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 1rem; opacity: 0.5;"></i>
@@ -15465,7 +16553,7 @@ ignite();
               <h3>Permission Denied</h3>
               <p>You do not have permission to view databases for this server.</p>
             </div>
-          `;
+          `, panelBody);
                 return;
             }
 
@@ -15481,7 +16569,7 @@ ignite();
             }
 
             if (!dbs.length) {
-                panelBody.innerHTML = `
+                DOMUpdater.render(`
           <div class="files-error">
             <div class="panel-list-item-icon" style="background: rgba(45, 212, 191, 0.1); color: #2dd4bf; margin-bottom: 1rem; width: 48px; height: 48px; font-size: 1.5rem;">
               <i class="fas fa-database"></i>
@@ -15489,11 +16577,11 @@ ignite();
             <span>No databases found</span>
             ${canCreate ? `<p style="color: var(--text-tertiary); font-size: 0.8rem; margin-top: 0.5rem;">Click "Create" to add a database</p>` : ''}
           </div>
-        `;
+        `, panelBody);
                 return;
             }
 
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="panel-list">
           ${dbs.map(db => {
                 const password = db.attributes.relationships?.password?.attributes?.password || '';
@@ -15549,18 +16637,18 @@ ignite();
           `;
             }).join('')}
         </div>
-      `;
+      `, panelBody);
         } catch (e) {
             BnLog('ERROR', 'Failed to load databases:', e);
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="files-error">
           <i class="fas fa-exclamation-triangle"></i>
           <span>Failed to load databases</span>
           <button class="btn btn-primary" style="margin-top: 0.75rem; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.85rem;" onclick="loadDatabasesPanel('${escapeHTML(identifier)}')">
-            <i class="fas fa-redo" style="color: var(--bg-primary);"></i> Retry
+            <i class="fas fa-redo"></i> Retry
           </button>
         </div>
-      `;
+      `, panelBody);
         }
     }
 
@@ -15668,7 +16756,7 @@ ignite();
             const identifier = finalAttrs.identifier || attrs.identifier || data.identifier || '';
             const name = finalAttrs.name || attrs.name || data.name || 'Server';
 
-            panelBody.innerHTML = `
+            DOMUpdater.render(`
         <div class="panel-list" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
           <div class="settings-actions-section" style="display: flex; flex-direction: column; gap: 0.75rem;">
             <div class="startup-action-row">
@@ -15709,7 +16797,7 @@ ignite();
             </div>
           </div>
         </div>
-      `;
+      `, panelBody);
         };
 
         renderSettingsContent(details);
@@ -15744,7 +16832,7 @@ ignite();
 
         const originalHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Saving...', btn);
         SoundManager.playButtonClick();
 
         try {
@@ -15802,7 +16890,6 @@ ignite();
                         }
 
                         loadSettingsPanel(merged, serverId);
-                        updateMainContent();
                     }
                 } catch (e) {
                     BnLog('ERROR', 'Failed to refresh cache after save:', e);
@@ -15817,7 +16904,7 @@ ignite();
             showToast('Failed to update settings', 'error');
         } finally {
             btn.disabled = false;
-            btn.innerHTML = originalHtml;
+            DOMUpdater.render(originalHtml, btn);
         }
     }
     window.handleUpdateServerSettings = handleUpdateServerSettings;
@@ -15873,7 +16960,7 @@ ignite();
                             state.controlPanel.resources[identifier].data.attributes.is_installing = true;
                         }
 
-                        _ls.set('bh-server-details-cache', JSON.stringify(state.serverDetailsCache));
+                        AsyncCache.set('bh-server-details-cache', state.serverDetailsCache);
                         refreshServerDetailsModalResources(identifier);
                         setTimeout(async () => {
                             try {
@@ -15907,7 +16994,7 @@ ignite();
     async function handlePanelSFTPGenerate(btn, serverId) {
         const originalHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+        DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Generating...', btn);
 
         const pass = await generateSFTPPassword();
         if (pass) {
@@ -15917,7 +17004,7 @@ ignite();
         } else {
             showToast('Failed to generate password', 'error');
             btn.disabled = false;
-            btn.innerHTML = originalHtml;
+            DOMUpdater.render(originalHtml, btn);
         }
     }
 
@@ -15980,7 +17067,7 @@ ignite();
             `;
         }
 
-        panelBody.innerHTML = `
+        DOMUpdater.render(`
             <style>
             @keyframes bananaSkeletonPulse {
                 0% { opacity: 0.4; }
@@ -15991,20 +17078,20 @@ ignite();
             <div class="panel-list activity-list" style="display: flex; flex-direction: column; min-height: 100%;">
                 ${skeletons}
             </div>
-        `;
+        `, panelBody);
         panelBody.scrollTop = 0;
 
         try {
             const response = await callProxyFetch(`https://control.bot-hosting.net/api/client/servers/${identifier}/activity?sort=-timestamp&page=${page}&per_page=25&include=actor`);
 
             if (response.status === 403 || response.status === 401) {
-                panelBody.innerHTML = `
+                DOMUpdater.render(`
                     <div class="empty-state">
                         <i class="fas fa-lock" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 1rem; opacity: 0.5;"></i>
                         <h3>Permission Denied</h3>
                         <p>You do not have permission to view activity logs.</p>
                     </div>
-                `;
+                `, panelBody);
                 return;
             }
 
@@ -16014,12 +17101,12 @@ ignite();
 
             const list = panelBody.querySelector('.activity-list') || panelBody;
             if ((!activity || !activity.length) && page === 1) {
-                list.innerHTML = `
+                DOMUpdater.render(`
                     <div class="files-error">
                         <i class="fas fa-clock-rotate-left"></i>
                         <span>No activity recorded</span>
                     </div>
-                `;
+                `, list);
                 return;
             }
 
@@ -16131,13 +17218,13 @@ ignite();
                 `;
             }
 
-            list.innerHTML = itemsHtml + paginationHtml;
+            DOMUpdater.render(itemsHtml + paginationHtml, list);
             panelBody.onscroll = null;
             panelBody.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
             BnLog('ERROR', 'Failed to load activity:', e);
             if (page === 1) {
-                panelBody.innerHTML = `<div class="files-error"><span>Failed to fetch activity logs</span></div>`;
+                DOMUpdater.render(`<div class="files-error"><span>Failed to fetch activity logs</span></div>`, panelBody);
             }
         }
     }
@@ -16207,7 +17294,7 @@ ignite();
         banana.id = 'bh-floating-banana';
         if (isLoading) banana.classList.add('banana-loading');
 
-        banana.innerHTML = `
+        DOMUpdater.render(`
       <div class="banana-inner">${getBananaAsset(48)}</div>
       ${isLoading ? `
         <svg class="banana-progress-svg" viewBox="0 0 64 64">
@@ -16215,7 +17302,7 @@ ignite();
           <circle class="banana-progress-bar" cx="32" cy="32" r="30"></circle>
         </svg>
       ` : ''}
-    `;
+    `, banana);
 
         banana.style.cssText = `
       position: fixed;
@@ -16467,7 +17554,7 @@ ignite();
             setTimeout(() => svg.remove(), 500);
         }
 
-        showToast('Banana-core READY!!! 🍌', 'success');
+        //showToast('Banana-core READY!!! 🍌', 'success');
     }
 
     function setupShortcutListeners() {
@@ -16497,13 +17584,28 @@ ignite();
             localStorage.setItem('share-data', 'true');
         }
         if (localStorage.getItem('share-data') === 'false') return;
-        if (!state.user || !state.user.id) return;
+
+        let telToken = localStorage.getItem('telemetry-token');
+        const telUserId = localStorage.getItem('telemetry-user-id');
+
+        if (telToken && state.user?.id) {
+            if (!telUserId) {
+                localStorage.setItem('telemetry-user-id', state.user.id);
+            } else if (telUserId !== state.user.id) {
+                BnLog('WARN', 'Telemetry mismatch detected, resetting session');
+                localStorage.removeItem('telemetry-token');
+                localStorage.removeItem('telemetry-username');
+                localStorage.removeItem('telemetry-user-id');
+                telToken = null;
+            }
+        }
+
+        if (!telToken) return;
+        if (!telToken) return;
 
         try {
             const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || 'Unknown';
             const telemetryPayload = {
-                userId: state.user.id,
-                username: state.user.username,
                 platform: platform,
                 dailyCoins: state.coinCollector.coinsCollected || 0,
                 bCoins: state.coinCollector.currentCoins || 0,
@@ -16541,19 +17643,39 @@ ignite();
                 }
             };
 
-            await fetch(CONFIG.TELEMETRY, {
+            const resp = await fetch(CONFIG.TELEMETRY, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-telemetry-token': telToken
+                },
                 body: JSON.stringify(telemetryPayload),
                 credentials: 'omit'
             });
+
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.isBetaTester !== undefined) {
+                    state.isBetaTester = data.isBetaTester;
+                    const pref = localStorage.getItem('bh-ota-version');
+                    if (pref === 'Canary > Bundled' && !data.isBetaTester) {
+                        localStorage.setItem('bh-ota-version', 'Latest > Bundled');
+                        showToast('You are no longer a beta tester.', 'error');
+                        setTimeout(() => window.location.reload(), 1500);
+                    }
+                }
+            } else if (resp.status === 401) {
+                localStorage.removeItem('telemetry-token');
+                localStorage.removeItem('telemetry-username');
+                state.isBetaTester = false;
+            }
         } catch (e) {
             //
         }
     }
 
     setInterval(sendTelemetryHeartbeat, 60 * 1000);
-    setTimeout(sendTelemetryHeartbeat, 5000);
+    setTimeout(sendTelemetryHeartbeat, 2500);
     //
     function setupEasterEggs() {
         document.addEventListener('keydown', (e) => {
@@ -16676,7 +17798,7 @@ ignite();
             overlay = document.createElement('span');
             overlay.className = 'af-zeroes';
             overlay.style.cssText = 'display:inline-block;position:relative;overflow:hidden;width:1.6em;height:1.1em;vertical-align:text-bottom;margin-left:2px;';
-            overlay.innerHTML = '<span style="display:block;position:absolute;left:0;bottom:-100%;width:100%;transition:bottom 0.4s cubic-bezier(0.34,1.56,0.64,1);font-weight:bold;text-align:left;">00</span>';
+            DOMUpdater.render('<span style="display:block;position:absolute;left:0;bottom:-100%;width:100%;transition:bottom 0.4s cubic-bezier(0.34,1.56,0.64,1);font-weight:bold;text-align:left;">00</span>', overlay);
             h3.appendChild(overlay);
         }
 
@@ -16848,6 +17970,8 @@ ignite();
         return QUICK_ACTION_COLORS[state.settings.quickActions.length % QUICK_ACTION_COLORS.length];
     }
 
+    const faviconCache = new Map();
+
     function renderQuickActionsButtons() {
         const actions = state.settings.quickActions;
         let html = '';
@@ -16893,6 +18017,37 @@ ignite();
                 state.controlPanel.servers.length > 0 &&
                 !state.controlPanel.servers.some(s => s.attributes.identifier === (action.identifier || action.serverId));
 
+            const isActionLoading = !!(state.loadingServerId && (state.loadingServerId === action.serverId || state.loadingServerId === action.identifier));
+            const shouldDisable = !!(action.type === 'server' && state.loadingServerId);
+
+            let iconHtml = '';
+            if (action.type === 'url') {
+                const url = action.url;
+                let cachedStatus = faviconCache.get(url);
+                if (!cachedStatus) {
+                    faviconCache.set(url, 'loading');
+                    const img = new Image();
+                    img.onload = () => {
+                        faviconCache.set(url, 'loaded');
+                        updateQuickActionsGrid();
+                    };
+                    img.onerror = () => {
+                        faviconCache.set(url, 'failed');
+                        updateQuickActionsGrid();
+                    };
+                    img.src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url)}&sz=32`;
+                    cachedStatus = 'loading';
+                }
+
+                if (cachedStatus === 'loaded') {
+                    iconHtml = `<img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(url)}&sz=32" class="action-favicon">`;
+                } else {
+                    iconHtml = `<i class="fas fa-link"></i>`;
+                }
+            } else {
+                iconHtml = `<i class="${escapeHTML(icon)}"></i>`;
+            }
+
             html += `
         <button class="action-btn ${colorClass} ${isMissing ? 'is-missing' : ''}" 
           data-action-type="${action.type}" 
@@ -16901,13 +18056,15 @@ ignite();
           data-action-id="${action.id}" 
           data-server-id="${action.serverId || ''}"
           ${action.type === 'url' ? 'oncontextmenu="window.handleQuickActionContextMenu(event, \'' + action.id + '\')"' : ''}
-          style="${isMissing ? 'opacity: 0.7;' : ''}">
+          ${shouldDisable ? 'disabled style="' + (isMissing ? 'opacity: 0.7; ' : '') + 'opacity: 0.6; cursor: not-allowed;"' : (isMissing ? 'style="opacity: 0.7;"' : '')}>
           <span class="action-delete-btn" data-delete-id="${action.id}" title="Remove Action">
             <i class="fas fa-times"></i>
           </span>
           <div class="action-btn-main" style="${isMissing ? 'opacity: 0.5; pointer-events: none;' : ''}">
-            ${action.type === 'url' ? `<img src="https://www.google.com/s2/favicons?domain=${escapeHTML(action.url)}&sz=32" class="action-favicon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"><i class="fas fa-link" style="display:none"></i>` : `<i class="${escapeHTML(icon)}"></i>`}
-            <span class="notranslate">${escapeHTML(label)}</span>
+            ${isActionLoading ?
+                    `<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>` :
+                    iconHtml}
+            <span class="notranslate">${isActionLoading ? 'Wait...' : escapeHTML(label)}</span>
           </div>
         </button>
       `;
@@ -16927,7 +18084,8 @@ ignite();
 
     function setupQuickActionListeners() {
         const grid = document.getElementById('quick-actions-grid');
-        if (!grid) return;
+        if (!grid || grid._listenersBound) return;
+        grid._listenersBound = true;
 
         window.handleQuickActionContextMenu = (e, actionId) => {
             const action = state.settings.quickActions.find(a => a.id === actionId);
@@ -16988,9 +18146,10 @@ ignite();
         }
 
         setTimeout(() => {
-            state.settings.quickActions = state.settings.quickActions.filter(a => a.id !== actionId);
-            localStorage.setItem('bh-quick-actions', JSON.stringify(state.settings.quickActions));
-            updateQuickActionsGrid();
+            const index = state.settings.quickActions.findIndex(a => a.id === actionId);
+            if (index !== -1) {
+                state.settings.quickActions.splice(index, 1);
+            }
             showToast('Quick action removed', 'info');
         }, 200);
     }
@@ -17002,7 +18161,7 @@ ignite();
         const modal = document.createElement('div');
         modal.id = 'bh-edit-url-modal';
         modal.className = 'bananaa-modal visible';
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="modal-overlay"></div>
       <div class="modal-container" style="max-width: 400px;">
         <div class="modal-header">
@@ -17024,7 +18183,7 @@ ignite();
           <button id="save-url-edit" class="btn btn-primary" style="width: 100%;">Save Changes</button>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         updateModalTextColors();
@@ -17048,8 +18207,7 @@ ignite();
 
             action.label = newName;
             action.url = newUrl;
-            localStorage.setItem('bh-quick-actions', JSON.stringify(state.settings.quickActions));
-            updateQuickActionsGrid();
+
             showToast('URL action updated', 'success');
             close();
         };
@@ -17064,7 +18222,7 @@ ignite();
         const modal = document.createElement('div');
         modal.id = 'bh-add-action-modal';
         modal.className = 'bananaa-modal';
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="modal-overlay"></div>
       <div class="modal-container" style="max-width: 400px;">
         <div class="modal-header">
@@ -17148,7 +18306,7 @@ ignite();
           </div>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
         updateModalTextColors();
@@ -17285,8 +18443,6 @@ ignite();
         }
 
         state.settings.quickActions.push(action);
-        localStorage.setItem('bh-quick-actions', JSON.stringify(state.settings.quickActions));
-        updateQuickActionsGrid();
         showToast('Quick action added!', 'success');
         SoundManager.playButtonClick();
     }
@@ -17294,9 +18450,20 @@ ignite();
     function updateQuickActionsGrid() {
         const grid = document.getElementById('quick-actions-grid');
         if (grid) {
-            grid.innerHTML = renderQuickActionsButtons();
+            DOMUpdater.render(renderQuickActionsButtons(), grid);
+            setupQuickActionListeners();
         }
     }
+
+    let _qaSyncTimeout;
+    state.settings.quickActions.on('*', ({ target }) => {
+        if (target !== state.settings.quickActions.__raw__) return;
+        clearTimeout(_qaSyncTimeout);
+        _qaSyncTimeout = setTimeout(() => {
+            localStorage.setItem('bh-quick-actions', JSON.stringify(state.settings.quickActions));
+            updateQuickActionsGrid();
+        }, 50);
+    });
 
 
 
@@ -17326,7 +18493,7 @@ ignite();
             const nextRenewal = parseInt(timer.dataset.renewal);
             if (isNaN(nextRenewal)) return;
             const diff = nextRenewal - Date.now();
-            timer.innerHTML = formatRenewalTime(nextRenewal);
+            DOMUpdater.render(formatRenewalTime(nextRenewal), timer);
             if (diff > 0 && diff < 120000) needsFastUpdate = true;
         });
 
@@ -17339,10 +18506,7 @@ ignite();
             'Clear Recent Activity',
             'Are you sure you want to clear ALL activity for your account? This action cannot be undone.',
             () => {
-                state.transactions = [];
-                saveActivityCache();
-                updateDashboard();
-                showToast('Activity cleared successfully', 'success');
+                deleteActivityHistory();
             },
             'Clear All',
             true
@@ -17515,12 +18679,12 @@ ignite();
                     const notice = document.getElementById('extension-update-notice');
                     if (notice) {
                         notice.style.display = 'flex';
-                        notice.innerHTML = `
+                        DOMUpdater.render(`
               <div class="status-notice-content">
                 <i class="fas fa-arrow-up-right-from-square" style="margin-right: 12px; font-size: 1.2rem;"></i>
                 <span>New extension version available: <strong>v${status.extensionUpdate}</strong> — <a href="https://github.com/relentiousdragon/BananaBurner" target="_blank" style="color: inherit; text-decoration: underline; font-weight: 600;">Update from GitHub</a> to avoid issues.</span>
               </div>
-            `;
+            `, notice);
                     }
                 }
             });
@@ -17803,6 +18967,12 @@ ignite();
         const currentCoins = state.coinCollector.currentCoins;
         const cfg = state.serverCreator.config;
         const isRunning = state.serverCreator.running;
+        const cost = calculateServerCost();
+        const period = cfg.billing === 'weekly' ? 'week' : 'month';
+        const isError = currentCoins < cost;
+        const costStyle = isError
+            ? 'color: var(--accent-error); border: 1px solid var(--accent-error) !important;'
+            : 'color: var(--text-primary); border: 1px solid var(--border-light) !important;';
 
         return `
       <div class="module-card">
@@ -17872,7 +19042,7 @@ ignite();
             
             <div class="form-group">
               <label>Cost</label>
-              <div id="bh-server-cost" class="cost-display">0 coins</div>
+              <div id="bh-server-cost" class="cost-display" style="${costStyle}">${cost} coins per ${period}</div>
             </div>
           </div>
           
@@ -18013,8 +19183,10 @@ ignite();
             }).join('')}
                 </div>
                 <div class="server-actions">
-                  <button class="btn btn-outline" onclick="showServerDetails('${escapeHTML(server.serverid)}', false, event)">
-                    <i class="fas fa-info-circle" style="font-size: 1.35em !important;"></i> Details
+                  <button class="btn btn-outline" ${state.loadingServerId ? 'disabled style="opacity: 0.6; cursor: not-allowed;"' : ''} onclick="showServerDetails('${escapeHTML(server.serverid)}', false, event)">
+                    ${state.loadingServerId === server.serverid ?
+                    `<svg class="bh-spinner" style="width: 1.5em !important; height: 1.5em !important; margin-right: 0.25rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Loading...` :
+                    `<i class="fas fa-info-circle" style="font-size: 1.35em !important;"></i> Details`}
                   </button>
                 </div>
               </div>
@@ -18062,8 +19234,10 @@ ignite();
                     }).join('')}
                         </div>
                         <div class="server-actions">
-                          <button class="btn btn-outline" ${isSuspended ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''} onclick="showServerDetails('${escapeHTML(identifier)}', false, event)">
-                            <i class="fas fa-info-circle" style="font-size: 1.35em !important;"></i> Details
+                          <button class="btn btn-outline" ${isSuspended ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : (state.loadingServerId ? 'disabled style="opacity: 0.6; cursor: not-allowed;"' : '')} onclick="showServerDetails('${escapeHTML(identifier)}', false, event)">
+                            ${state.loadingServerId === identifier ?
+                            `<svg class="bh-spinner" style="width: 1.5em !important; height: 1.5em !important; margin-right: 0.25rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Loading...` :
+                            `<i class="fas fa-info-circle" style="font-size: 1.35em !important;"></i> Details`}
                           </button>
                         </div>
                       </div>
@@ -18168,9 +19342,9 @@ ignite();
         }
 
         try {
-            const response = await fetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/conf.dat?t=' + Date.now());
+            const response = await callProxyFetch('https://raw.githubusercontent.com/relentiousdragon/BananaBurner/main/conf.dat?t=' + Date.now());
             if (response.ok) {
-                const remoteConfig = await response.json();
+                const remoteConfig = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
                 _ls.set(CACHE_KEY, JSON.stringify({ data: remoteConfig, timestamp: Date.now() }));
                 Object.assign(CONFIG, remoteConfig);
                 if (CONFIG.DEBUG) BnLog('DEBUG', 'Remote config updated from GitHub');
@@ -18180,8 +19354,46 @@ ignite();
         }
     }
 
+
+    const checkScriptUpdates = checkForScriptUpdate;
+
     async function init() {
+        addbananaaSplashStyles();
         if (state.isInitializing) return;
+
+        let cachedDetails = await AsyncCache.get('bh-server-details-cache');
+        if (!cachedDetails) {
+            const oldCache = _ls.json('bh-server-details-cache', null);
+            if (oldCache) {
+                cachedDetails = oldCache;
+                await AsyncCache.set('bh-server-details-cache', cachedDetails);
+                localStorage.removeItem('bh-server-details-cache');
+            }
+        }
+        if (cachedDetails) {
+            state.serverDetailsCache = cachedDetails;
+        }
+
+        const urlParamsAtStart = new URLSearchParams(window.location.search);
+        const initialHasParams = window.location.search.length > 1;
+        const initialIsSyncing = urlParamsAtStart.has('telemetryToken');
+
+        if (localStorage.getItem('OSRC') === 'true') {
+            await handleBotHostingLogin();
+        }
+
+        const bhToken = localStorage.getItem('token');
+        const isBHCallback = urlParamsAtStart.has('code');
+        if (!bhToken && !isBHCallback) {
+            window.location.href = 'https://bot-hosting.net/login';
+            return;
+        }
+
+        state.initialAuthParams = {
+            hasParams: initialHasParams,
+            isSyncing: initialIsSyncing
+        };
+
         state.isInitializing = true;
 
         const CACHE_KEY = 'bh-remote-config-cache';
@@ -18216,10 +19428,13 @@ ignite();
         updateRenewalTimers();
 
         showSecurityConfirmation().then(() => {
-            const splashYN = (!osrc || !isFresh) && !state.settings.startHidden && !isSCF();
+            const forceSplash = state.initialAuthParams.isSyncing || state.isRedirectingToAuth || state.initialAuthParams.hasParams;
+
+            const splashYN = (forceSplash || !osrc || !isFresh) && !state.settings.startHidden && !isSCF();
 
             const progressHandler = (text) => {
                 const stages = [
+                    'Verifying Extension Link...',
                     'Connecting to Bothosting API...',
                     'Thonking...',
                     'Fetching User Profile...',
@@ -18228,7 +19443,10 @@ ignite();
                     'Syncing with Control Panel...',
                     'Injecting bananas into core...',
                     'Synchronizing Transactions...',
-                    'Banana-core READY!!!'
+                    'Banana-core READY!!!',
+                    'Creating Marketplace session...',
+                    'Syncing Identity with Marketplace...',
+                    'Redirecting to Marketplace Auth...'
                 ];
                 const index = stages.indexOf(text);
                 const percent = index === -1 ? 0 : ((index + 1) / stages.length) * 100;
@@ -18239,8 +19457,20 @@ ignite();
                 if (splash && splash.style.display !== 'none') {
                     const fill = splash.querySelector('.progress-fill');
                     const pText = splash.querySelector('.progress-text');
+                    const v2Text = splash.querySelector('.v2-text');
+                    const v2ProgressRing = splash.querySelector('.v2-progress-bar');
+
                     if (fill) fill.style.width = `${percent}%`;
                     if (pText) pText.innerText = text;
+
+                    if (v2Text) v2Text.innerText = text;
+                    if (v2ProgressRing) {
+                        const radius = v2ProgressRing.r.baseVal.value;
+                        const circumference = 2 * Math.PI * radius;
+                        const offset = circumference - (percent / 100) * circumference;
+                        v2ProgressRing.style.strokeDasharray = `${circumference} ${circumference}`;
+                        v2ProgressRing.style.strokeDashoffset = offset;
+                    }
                 } else if (banana) {
                     updateBananaLoadingProgress(percent);
                 }
@@ -18271,7 +19501,7 @@ ignite();
                     startRelaySnapshots();
                 });
             } else {
-                showSplashScreen();
+                showSplashScreen(progressHandler);
                 setupLordiconListeners();
                 startRelaySnapshots();
                 initializeMainApp(progressHandler).then(() => {
@@ -18309,7 +19539,7 @@ ignite();
     function createMainOverlay() {
         const overlay = document.createElement('div');
         overlay.id = 'bh-overlay';
-        overlay.innerHTML = `
+        DOMUpdater.render(`
       <div class="bh-container">
         <header class="bh-header">
           <div class="header-content">
@@ -18375,7 +19605,7 @@ ignite();
           ${renderFooter()}
         </main>
       </div>
-    `;
+    `, overlay);
 
         document.body.appendChild(overlay);
         addStyles();
@@ -18818,21 +20048,51 @@ ignite();
       
 
 
-      .bh-container::before {
+      body.frost-enabled .bh-container::before {
         content: '';
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
+        top: 0; left: 0; width: 100vw; height: 100vh;
         background: 
-          radial-gradient(ellipse at 80% 20%, color-mix(in srgb, var(--accent-secondary, var(--accent-primary)) 12%, transparent) 0%, transparent 50%),
-          radial-gradient(ellipse at 95% 70%, color-mix(in srgb, var(--accent-primary) 10%, transparent) 0%, transparent 50%),
-          radial-gradient(ellipse at 90% 40%, color-mix(in srgb, var(--accent-secondary, var(--accent-primary)) 8%, transparent) 0%, transparent 50%);
+          radial-gradient(circle at 10% 20%, color-mix(in srgb, var(--accent-primary) 15%, transparent) 0%, transparent 40%),
+          radial-gradient(circle at 90% 80%, color-mix(in srgb, var(--accent-secondary, var(--accent-primary)) 15%, transparent) 0%, transparent 40%),
+          radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--accent-secondary, var(--accent-primary)) 10%, transparent) 0%, transparent 40%),
+          radial-gradient(circle at 20% 80%, color-mix(in srgb, var(--accent-primary) 10%, transparent) 0%, transparent 40%);
         pointer-events: none;
         z-index: 1;
-        animation: ambientF 25s infinite ease-in-out alternate;
-        opacity: 0.18;
+        animation: cinematicMesh 15s infinite ease-in-out alternate;
+        mix-blend-mode: screen;
+      }
+      
+      body.frost-enabled .bh-container::after {
+        content: '';
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        background: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 2;
+        opacity: 0.25;
+        mix-blend-mode: overlay;
+      }
+
+      @keyframes cinematicMesh {
+        0% { transform: scale(1) rotate(0deg); opacity: 0.7; }
+        50% { transform: scale(1.1) translate(2%, 2%); opacity: 1; }
+        100% { transform: scale(1) translate(-2%, -2%) rotate(-2deg); opacity: 0.7; }
+      }
+
+      body.frost-enabled .module-card, body.frost-enabled .market-card, body.frost-enabled .stat-card, body.frost-enabled .dashboard-card, body.frost-enabled .server-card, body.frost-enabled .modal-container, body.frost-enabled .setting-item {
+        background: color-mix(in srgb, var(--bg-secondary) 60%, transparent) !important;
+        backdrop-filter: blur(28px) saturate(200%) !important;
+        -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
+        border: 1px solid color-mix(in srgb, #ffffff 8%, transparent) !important;
+        box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5), inset 0 1px 0 0 rgba(255,255,255,0.05) !important;
+      }
+      
+      body.frost-enabled .module-header, body.frost-enabled .bh-header {
+        background: linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 85%, transparent) 0%, transparent 100%) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border-bottom: 1px solid color-mix(in srgb, #ffffff 5%, transparent) !important;
       }
       
       .bh-main::before {
@@ -20008,14 +21268,29 @@ ignite();
     background:var(--bg-secondary);
     color:var(--text-primary);
     cursor:pointer;
-    transition:all 0.2s ease;
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
     font-weight: 500;
     font-size: 0.9rem;
 }
 
       .action-btn:hover, .action-btn.context-menu-active {
-    transform:translateY(-1px);
+    transform:translateY(-2px);
     box-shadow:var(--shadow-md);
+}
+
+      .action-btn:active {
+    transform: scale(0.95);
+}
+
+      .action-btn-main i {
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+      .action-btn:hover .action-btn-main i {
+    transform: scale(1.15) rotate(5deg);
+}
+      .action-btn[data-action-type="server"]:hover .action-btn-main i {
+    transform: scale(1.15);
 }
 
       .action-btn.primary {background:linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); color:white; }
@@ -20034,6 +21309,7 @@ ignite();
         width: 100%;
         height: 100%;
         justify-content: center;
+        pointer-events: none !important;
       }
 
       body {
@@ -23070,9 +24346,9 @@ input[type="number"].modern-input {
     gap: 0.75rem;
 }
 
-.files-error i {
+.files-error > i {
     font-size: 2rem;
-    color: var(--accent-warning);
+    color: var(--accent-primary);
 }
 
 .files-error-message {
@@ -24356,7 +25632,7 @@ input[type="checkbox"].file-select-cb,
             }
         };
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
       <div class="modal-overlay" onclick="window.dismissAuthModal()"></div>
       <div class="modal-container" style="max-width: 400px; border: 1px solid rgba(239, 68, 68, 0.3); background: var(--modal-bg-primary, #1e293b); padding: 0; overflow: hidden;">
         <div class="modal-header" style="background: var(--modal-tertiary-bg, #334155); padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); margin: 0; display: flex; align-items: center; justify-content: space-between;">
@@ -24383,7 +25659,7 @@ input[type="checkbox"].file-select-cb,
           </div>
         </div>
       </div>
-    `;
+    `, modal);
 
         document.body.appendChild(modal);
 
@@ -24398,10 +25674,10 @@ input[type="checkbox"].file-select-cb,
         const container = document.getElementById('ad-placement');
         if (!container) return;
 
-        if (container.dataset.initialized === 'true' || container.innerHTML.trim() !== '' || container.querySelector('iframe')) {
+        if (container._initialized || container.innerHTML.trim() !== '' || container.querySelector('iframe')) {
             return;
         }
-        container.dataset.initialized = 'true';
+        container._initialized = true;
 
         if (!window.__bn_nitropay_initialized) {
             BnLog('STARTUP', 'Initializing NitroPay Ads...');
@@ -24469,6 +25745,7 @@ input[type="checkbox"].file-select-cb,
     window.loadSettingsPanel = loadSettingsPanel;
 
     async function fetchMarketData(page = 1) {
+        if (state.market.loading) return;
         state.market.loading = true;
         state.market.currentPage = page;
         updateMarketUI();
@@ -24477,12 +25754,23 @@ input[type="checkbox"].file-select-cb,
         const cacheKey = `bh-market-cache-${type.toLowerCase()}-p${page}`;
 
         try {
+            const telToken = localStorage.getItem('telemetry-token');
             const rawResponse = await fetch(`${CONFIG.MARKET}/list?type=${type}&page=${page}`, {
                 method: 'GET',
-                credentials: 'omit'
+                credentials: 'omit',
+                headers: {
+                    'x-telemetry-token': telToken || ''
+                }
             });
 
-            if (!rawResponse.ok) throw new Error(`HTTP error! status: ${rawResponse.status}`);
+            if (!rawResponse.ok) {
+                if (rawResponse.status === 401) {
+                    localStorage.removeItem('telemetry-token');
+                    localStorage.removeItem('telemetry-username');
+                    window.location.reload();
+                }
+                throw new Error(`HTTP error! status: ${rawResponse.status}`);
+            }
             const data = await rawResponse.json();
 
             if (state.market.currentSubTab === 'themes') {
@@ -24494,6 +25782,7 @@ input[type="checkbox"].file-select-cb,
             state.market.totalItems = data.total;
             state.market.hasMore = data.hasMore;
             state.market.lastFetch = Date.now();
+            _marketFetchTimestamps[state.market.currentSubTab] = Date.now();
 
             localStorage.setItem(cacheKey, JSON.stringify({
                 items: data.items,
@@ -24525,6 +25814,7 @@ input[type="checkbox"].file-select-cb,
             }
         } finally {
             state.market.loading = false;
+            state.market.lastFetch = Date.now();
             updateMarketUI();
         }
     }
@@ -24566,6 +25856,12 @@ input[type="checkbox"].file-select-cb,
             return;
         }
 
+        const failCacheKey = `bh-404-cache-${hash}`;
+        const lastFail = localStorage.getItem(failCacheKey);
+        if (lastFail && (Date.now() - parseInt(lastFail)) < 60 * 1000) {
+            return;
+        }
+
         try {
             let response;
             if (url.includes(CONFIG.MARKET)) {
@@ -24584,7 +25880,7 @@ input[type="checkbox"].file-select-cb,
             } else {
                 response = await callProxyFetch(url);
             }
-            if (response.success && response.data && typeof response.data === 'string' && response.data.startsWith('data:image')) {
+            if (response && response.success && response.data && typeof response.data === 'string' && response.data.startsWith('data:image')) {
                 imageCache.set(url, response.data);
                 try {
                     localStorage.setItem(cacheKey, response.data);
@@ -24596,8 +25892,11 @@ input[type="checkbox"].file-select-cb,
                     img.src = response.data;
                     img.style.opacity = '1';
                 }
+            } else {
+                localStorage.setItem(failCacheKey, Date.now().toString());
             }
         } catch (e) {
+            localStorage.setItem(failCacheKey, Date.now().toString());
             BnLog('ERROR', 'Failed to load proxy image:', e);
         }
     }
@@ -24615,8 +25914,39 @@ input[type="checkbox"].file-select-cb,
 
     function updateMarketUI() {
         if (state.currentView !== 'market') return;
+
         const container = document.querySelector('.market-items-grid');
         const pagination = document.getElementById('market-pagination');
+        const previewModal = document.querySelector('.bananaa-modal:not(#bh-login-required-modal)');
+
+        let previewBtn = null;
+        if (previewModal) {
+            previewBtn = previewModal.querySelector('.btn[onclick*="window.installModule"]');
+        }
+
+        if (state.market.downloading && state.market.installProgress > 0) {
+            const id = state.market.downloading;
+            const targetBtns = [];
+            if (previewBtn) targetBtns.push(previewBtn);
+
+            if (container) {
+                const cardBtns = container.querySelectorAll(`button[onclick*="window.installModule('${id}'"]`);
+                cardBtns.forEach(b => targetBtns.push(b));
+            }
+
+            targetBtns.forEach(btn => {
+                const existingSpinner = btn.querySelector('.bh-spinner');
+                if (existingSpinner) {
+                    const textSpan = btn.querySelector('span');
+                    if (textSpan) textSpan.textContent = `Installing (${state.market.installProgress}%)...`;
+                    else DOMUpdater.render(`<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> <span>Installing (${state.market.installProgress}%)...</span>`, btn);
+                } else {
+                    DOMUpdater.render(`<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> <span>Installing (${state.market.installProgress}%)...</span>`, btn);
+                }
+            });
+            return;
+        }
+
 
         document.querySelectorAll('.market-tabs .m-tab').forEach(tab => {
             const text = tab.innerText.toLowerCase();
@@ -24624,34 +25954,30 @@ input[type="checkbox"].file-select-cb,
             tab.classList.toggle('active', state.market.currentSubTab === target);
         });
 
-        if (container) container.innerHTML = state.market.loading ? renderMarketSkeletons() : renderMarketItems();
-        if (pagination) pagination.innerHTML = (state.market.hasMore || state.market.currentPage > 1) ? renderMarketPagination() : '';
+        if (container) DOMUpdater.render(state.market.loading ? renderMarketSkeletons() : renderMarketItems(), container);
+        if (pagination) DOMUpdater.render((state.market.hasMore || state.market.currentPage > 1) ? renderMarketPagination() : '', pagination);
 
-        const previewModal = document.querySelector('.bananaa-modal:not(#bh-login-required-modal)');
-        if (previewModal) {
-            const previewBtn = previewModal.querySelector('.btn[onclick*="window.installModule"]');
-            if (previewBtn) {
-                const onclickStr = previewBtn.getAttribute('onclick');
-                const match = onclickStr.match(/window\.installModule\('([^']+)',\s*'([^']+)'\)/);
-                if (match) {
-                    const [_, id, type] = match;
-                    const isDownloading = state.market.downloading === id;
-                    const isInstalled = state.market.installed[type].includes(id);
-                    const isApplied = type === 'themes' && state.market.activeThemeId === id;
+        if (previewBtn) {
+            const onclickStr = previewBtn.getAttribute('onclick');
+            const match = onclickStr.match(/window\.installModule\('([^']+)',\s*'([^']+)'\)/);
+            if (match) {
+                const [_, id, type] = match;
+                const isDownloading = state.market.downloading === id;
+                const isInstalled = state.market.installed[type].includes(id);
+                const isApplied = type === 'themes' && state.market.activeThemeId === id;
 
-                    previewBtn.disabled = isDownloading || isApplied;
-                    if (isDownloading) {
-                        previewBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Installing (${state.market.installProgress}%)...`;
-                    } else if (isApplied) {
-                        previewBtn.className = 'btn btn-outline';
-                        previewBtn.innerHTML = '<i class="fas fa-check"></i> Applied';
-                    } else if (isInstalled) {
-                        previewBtn.className = 'btn btn-primary';
-                        previewBtn.innerHTML = '<i class="fas fa-palette"></i> Apply Theme';
-                    } else {
-                        previewBtn.className = 'btn btn-primary';
-                        previewBtn.innerHTML = '<i class="fas fa-download"></i> Install Now';
-                    }
+                previewBtn.disabled = isDownloading || isApplied;
+                if (isDownloading) {
+                    DOMUpdater.render(`<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> <span>Installing (${state.market.installProgress}%)...</span>`, previewBtn);
+                } else if (isApplied) {
+                    previewBtn.className = 'btn btn-outline';
+                    DOMUpdater.render('<i class="fas fa-check"></i> Applied', previewBtn);
+                } else if (isInstalled) {
+                    previewBtn.className = 'btn btn-primary';
+                    DOMUpdater.render('<i class="fas fa-palette"></i> Apply Theme', previewBtn);
+                } else {
+                    previewBtn.className = 'btn btn-primary';
+                    DOMUpdater.render('<i class="fas fa-download"></i> Install Now', previewBtn);
                 }
             }
         }
@@ -24661,7 +25987,10 @@ input[type="checkbox"].file-select-cb,
         if (state.market.currentSubTab === tab) return;
         state.market.currentSubTab = tab;
         state.market.currentPage = 1;
-        fetchMarketData(1);
+        const lastFetch = _marketFetchTimestamps[tab] || 0;
+        if (!state.market.loading && Date.now() - lastFetch > state.market.cacheExpiry) {
+            fetchMarketData(1);
+        }
         updateMarketUI();
     }
 
@@ -24705,23 +26034,35 @@ input[type="checkbox"].file-select-cb,
             const isTheme = type === 'themes';
             const isIncompatible = isNewerVersion(item.version, CONFIG.SCRIPT_VERSION);
             const imgId = `market-img-${type}-${item.id}`;
-            const thumbUrl = type === 'local' ? (item.thumbnail || '') : `${CONFIG.MARKET}/thumbnail/${type === 'themes' ? 'Themes' : 'Plugins'}/${item.id}`;
+            const isValidId = item.id && item.id !== 'null' && item.id !== 'undefined';
+            const thumbUrl = type === 'local' ? (item.thumbnail || '') : (isValidId ? `${CONFIG.MARKET}/thumbnail/${type === 'themes' ? 'Themes' : 'Plugins'}/${item.id}` : '');
 
-            if (type === 'local' && item.thumbnail) {
-                setTimeout(() => {
-                    const img = document.getElementById(imgId);
-                    if (img) {
-                        img.src = item.thumbnail;
-                        img.style.opacity = '1';
-                    }
-                }, 0);
+            if (type === 'local') {
+                if (item.thumbnail) {
+                    setTimeout(() => {
+                        const img = document.getElementById(imgId);
+                        if (img) { img.src = item.thumbnail; img.style.opacity = '1'; }
+                    }, 0);
+                } else {
+                    AsyncCache.get(`bh-market-item-plugins-${item.id}`).then(cached => {
+                        const thumb = cached?.thumbnail || (typeof cached === 'string' ? (() => { try { return JSON.parse(cached)?.thumbnail; } catch { return null; } })() : null);
+                        if (!thumb) return;
+                        item.thumbnail = thumb;
+                        const img = document.getElementById(imgId);
+                        if (img) { img.src = thumb; img.style.opacity = '1'; }
+                    }).catch(() => { });
+                }
             } else {
                 setTimeout(() => loadProxyImage(imgId, thumbUrl), 0);
             }
 
             let btnText, btnDisabled, btnClass;
-            if (isDownloading) {
-                btnText = `<i class="fas fa-spinner fa-spin"></i> Installing...`;
+            if (item.pending) {
+                btnText = '<i class="fas fa-clock"></i> Pending Review';
+                btnDisabled = true;
+                btnClass = 'btn-outline';
+            } else if (isDownloading) {
+                btnText = `<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> <span>Installing...</span>`;
                 btnDisabled = true;
                 btnClass = 'btn-primary';
             } else if (isIncompatible) {
@@ -24757,11 +26098,17 @@ input[type="checkbox"].file-select-cb,
              oncontextmenu="event.preventDefault(); event.stopPropagation(); window.showMarketItemContextMenu(event, '${type}', '${item.id}', '${item.name.replace(/'/g, "\\'")}')"
              style="cursor: pointer;">
           <div class="card-thumb" style="aspect-ratio: 16/9; background: var(--bg-tertiary); position: relative; overflow: hidden;">
-            <img id="${imgId}" src="" alt="${escapeHTML(item.name)}" style="width: 100%; height: 100%; object-fit: cover; transition: all 0.5s ease; opacity: 0;">
+            ${item.pending ? `
+              <div class="pending-overlay" style="position: absolute; inset: 0; background: rgba(50, 50, 50, 0.6); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 4;">
+                <span style="color: white; font-weight: 800; letter-spacing: 3px; font-size: 1.1rem; text-shadow: 0 2px 8px rgba(0,0,0,0.5);">PENDING</span>
+              </div>
+            ` : ''}
+            <img id="${imgId}" src="${(type === 'local' ? item.thumbnail : imageCache.get(thumbUrl)) || ''}" alt="${escapeHTML(item.name)}" 
+                 style="width: 100%; height: 100%; object-fit: cover; transition: all 0.5s ease; opacity: ${(type === 'local' && item.thumbnail) || imageCache.has(thumbUrl) ? '1' : '0'};">
             <div class="thumb-overlay" style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s ease;">
               <i class="fas fa-search-plus" style="color: white; font-size: 1.5rem;"></i>
             </div>
-            ${isIncompatible ? '<div class="incompatible-badge" style="position: absolute; top: 10px; right: 10px; background: var(--accent-error); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700;">Incompatible</div>' : ''}
+            ${isIncompatible ? '<div class="incompatible-badge" style="position: absolute; top: 10px; right: 10px; background: var(--accent-error); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; z-index: 5;">Incompatible</div>' : ''}
           </div>
           <div class="card-body" style="padding: 1.25rem;">
             <div class="card-info notranslate" style="margin-bottom: 1.25rem;">
@@ -24883,24 +26230,78 @@ input[type="checkbox"].file-select-cb,
           @media (max-width: 1200px) { .market-items-grid { grid-template-columns: repeat(2, 1fr); } }
           @media (max-width: 768px) { 
             .module-header { flex-direction: column; align-items: stretch; text-align: center; gap: 1rem; } 
-            .market-tabs { justify-content: center; }
+            .market-tabs { 
+              justify-content: flex-start; 
+              overflow-x: auto; 
+              white-space: nowrap;
+              padding-bottom: 5px;
+              scrollbar-width: none;
+            }
+            .market-tabs::-webkit-scrollbar { display: none; }
             .market-items-grid { grid-template-columns: 1fr; } 
           }
+          .m-upload-btn {
+            background: var(--accent-primary, #5865f2);
+            color: white;
+            border: none;
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 1.1em;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(88, 101, 242, 0.2);
+          }
+          .m-upload-btn:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.1);
+            box-shadow: 0 6px 16px rgba(88, 101, 242, 0.3);
+          }
+          .m-upload-btn:active {
+            transform: scale(0.92);
+          }
+          .m-tabs-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 4px;
+            border-radius: 12px;
+            border: 1px solid var(--border-primary);
+          }
+          @media (max-width: 768px) {
+            .m-tabs-wrapper { width: 100%; overflow-x: auto; scrollbar-width: none; }
+            .m-tabs-wrapper::-webkit-scrollbar { display: none; }
+          }
         </style>
-        <div class="module-header">
-          <h2><i class="fas fa-store"></i> Marketplace</h2>
-          <div class="market-tabs">
-            <button class="m-tab ${m.currentSubTab === 'themes' ? 'active' : ''}" onclick="window.switchMarketTab('themes')">
-              <i class="fas fa-palette"></i> Themes
+        <div class="module-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <h2 style="margin:0;"><i class="fas fa-store"></i> Marketplace</h2>
+          </div>
+          <div class="m-tabs-wrapper">
+            ${localStorage.getItem('telemetry-token') ? `
+            <button class="m-upload-btn" onclick="window.openMarketUploadPrompt()" title="Upload Content">
+              <i class="fas fa-arrow-up-from-bracket"></i>
             </button>
-            <button class="m-tab ${m.currentSubTab === 'plugins' ? 'active' : ''}" onclick="window.switchMarketTab('plugins')">
-              <i class="fas fa-plug"></i> Plugins
-            </button>
-            ${state.devMode ? `
-            <button class="m-tab ${m.currentSubTab === 'local' ? 'active' : ''}" onclick="window.switchMarketTab('local')">
-              <i class="fas fa-laptop-code"></i> Local
-            </button>
+            <div style="width: 1px; height: 24px; background: var(--border-primary); opacity: 0.5;"></div>
             ` : ''}
+            <div class="market-tabs" style="border: none; padding: 0; background: transparent;">
+              <button class="m-tab ${m.currentSubTab === 'themes' ? 'active' : ''}" onclick="window.switchMarketTab('themes')">
+                <i class="fas fa-palette"></i> Themes
+              </button>
+              <button class="m-tab ${m.currentSubTab === 'plugins' ? 'active' : ''}" onclick="window.switchMarketTab('plugins')">
+                <i class="fas fa-plug"></i> Plugins
+              </button>
+              ${state.devMode ? `
+              <button class="m-tab ${m.currentSubTab === 'local' ? 'active' : ''}" onclick="window.switchMarketTab('local')">
+                <i class="fas fa-laptop-code"></i> Local
+              </button>
+              ` : ''}
+            </div>
           </div>
         </div>
 
@@ -24914,6 +26315,258 @@ input[type="checkbox"].file-select-cb,
         </div>
       </div>
                 `;
+    }
+
+    window.openMarketUploadPrompt = function () {
+        const existing = document.getElementById('bh-market-upload-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'bh-market-upload-modal';
+        modal.className = 'bananaa-modal visible';
+        modal.style.zIndex = '11000';
+
+        DOMUpdater.render(`
+            <div class="modal-overlay" onclick="document.getElementById('bh-market-upload-modal').remove()"></div>
+            <div class="modal-container" style="max-width: 500px;">
+                <div class="modal-header">
+                    <div class="modal-title">
+                        <i class="fas fa-cloud-arrow-up"></i>
+                        <h3>Upload to Market</h3>
+                    </div>
+                    <button class="modal-close" onclick="document.getElementById('bh-market-upload-modal').remove()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body" style="padding: 1.5rem; background: var(--bg-primary) !important;">
+                    <p style="font-size:0.85em; opacity:0.7; margin-bottom: 1.5rem;">Upload your custom themes or plugins. Submissions will be reviewed before going public.</p>
+                    
+                    <div style="margin-bottom: 1.5rem;">
+                        <label style="display:block; font-size:0.8em; margin-bottom:0.5rem; opacity:0.7;">Category</label>
+                        <select id="upload-type" style="width:100%; padding:0.7rem; background:var(--bg-secondary); border:1px solid var(--border-light); color:var(--text-primary); border-radius:10px; outline: none;">
+                            <option value="Themes">Theme (.bh)</option>
+                            <option value="Plugins">Plugin Folder</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 1.5rem;">
+                        <label style="display:block; font-size:0.8em; margin-bottom:0.5rem; opacity:0.7;">Description (max 300 characters)</label>
+                        <textarea id="upload-description" maxlength="300" placeholder="Describe your theme or plugin..." style="width:100%; height:80px; padding:0.7rem; background:var(--bg-secondary); border:1px solid var(--border-light); color:var(--text-primary); border-radius:10px; outline: none; resize: none; font-family: inherit; font-size: 0.9em;"></textarea>
+                        <div id="description-char-count" style="font-size: 0.75rem; text-align: right; opacity: 0.5; margin-top: 0.25rem;">0 / 300</div>
+                    </div>
+
+                    <div id="upload-zone" style="border: 2px dashed var(--border-light); border-radius: 12px; padding: 2rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.3s ease; background: rgba(255,255,255,0.02);">
+                        <i class="fas fa-file-import" style="font-size: 2.5rem; color: var(--accent-primary); margin-bottom: 1rem; opacity: 0.8;"></i>
+                        <p id="file-name-label" style="margin: 0; font-weight: 500;">Select Theme File</p>
+                        <p id="upload-hint" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">Themes require a <b>.bh</b> file.</p>
+                        <input type="file" id="upload-file-input" accept=".bh,.json,.txt" style="display: none;">
+                        <input type="file" id="upload-folder-input" webkitdirectory directory style="display: none;">
+                    </div>
+
+                    <div id="upload-error" style="color:var(--danger-color, #ff4444); font-size:0.8em; margin-top:1rem; display:none; padding: 0.5rem; background: rgba(255,0,0,0.05); border-radius: 8px; border: 1px solid rgba(255,0,0,0.1);"></div>
+                </div>
+                <div class="modal-footer" style="padding: 1rem; border-top: 1px solid var(--border-light); background: var(--bg-tertiary) !important; border-radius: 0 0 12px 12px; display: flex; justify-content: flex-end; gap: 0.75rem;">
+                    <button class="btn btn-outline" onclick="document.getElementById('bh-market-upload-modal').remove()">Cancel</button>
+                    <button id="submit-upload" class="btn btn-primary" disabled>Submit for Review</button>
+                </div>
+            </div>
+        `, modal);
+
+        document.body.appendChild(modal);
+
+        const typeSelect = modal.querySelector('#upload-type');
+        const uploadZone = modal.querySelector('#upload-zone');
+        const fileInput = modal.querySelector('#upload-file-input');
+        const folderInput = modal.querySelector('#upload-folder-input');
+        const nameLabel = modal.querySelector('#file-name-label');
+        const submitBtn = modal.querySelector('#submit-upload');
+        const errorDiv = modal.querySelector('#upload-error');
+        const hint = modal.querySelector('#upload-hint');
+        const descInput = modal.querySelector('#upload-description');
+        const descCharCount = modal.querySelector('#description-char-count');
+
+        let fileContent = '';
+        let manifestContent = '';
+        let fileMetadata = null;
+        let thumbnailData = null;
+
+        if (descInput && descCharCount) {
+            descInput.oninput = () => {
+                descCharCount.textContent = `${descInput.value.length} / 300`;
+            };
+        }
+
+        typeSelect.onchange = () => {
+            nameLabel.textContent = 'Select ' + (typeSelect.value === 'Themes' ? 'Theme File' : 'Plugin Folder');
+            DOMUpdater.render(typeSelect.value === 'Themes' ? 'Themes require a <b>.bh</b> file.' : 'Plugins require <b>metadata.json</b> & <b>script.js</b>', hint);
+            submitBtn.disabled = true;
+            fileContent = '';
+            fileMetadata = null;
+            if (descInput) descInput.value = '';
+            if (descCharCount) descCharCount.textContent = '0 / 300';
+        };
+
+        uploadZone.onclick = () => {
+            if (typeSelect.value === 'Themes') fileInput.click();
+            else folderInput.click();
+        };
+
+        const validateAndSetMetadata = (metadata, isTheme = false) => {
+            if (!metadata) throw new Error('Missing data');
+
+            if (!metadata.name) {
+                throw new Error(`${isTheme ? 'Theme' : 'metadata.json'} must include name`);
+            }
+
+            if (!isTheme && !metadata.version) {
+                throw new Error('metadata.json must include a version');
+            }
+
+            const telUsername = localStorage.getItem('telemetry-username') || state.user?.username;
+            if (metadata.author && metadata.author !== telUsername) {
+                throw new Error(`Author mismatch: Expected "${telUsername}", found "${metadata.author}"`);
+            }
+
+            fileMetadata = metadata;
+
+            if (metadata.description && descInput && !descInput.value.trim()) {
+                descInput.value = metadata.description.slice(0, 300);
+                descCharCount.textContent = `${descInput.value.length} / 300`;
+            }
+
+            submitBtn.disabled = false;
+            errorDiv.style.display = 'none';
+        };
+
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            nameLabel.textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    let content = ev.target.result.trim();
+                    if (!content.startsWith('{')) {
+                        try {
+                            content = atob(content.replace(/\s/g, ''));
+                        } catch (e) {
+                            throw new Error('File content is not valid JSON or Base64');
+                        }
+                    }
+
+                    const parsed = JSON.parse(content);
+                    fileContent = JSON.stringify(parsed);
+
+                    const themeMetadata = {
+                        id: parsed.id || null,
+                        name: parsed.name || parsed.themeName || 'Unnamed Theme',
+                        description: parsed.description || '',
+                        version: parsed.version || CONFIG.SCRIPT_VERSION,
+                        author: parsed.author || telUsername
+                    };
+
+                    validateAndSetMetadata(themeMetadata, true);
+
+                    if (parsed.bgImage && parsed.bgImage.startsWith('data:image/')) thumbnailData = parsed.bgImage;
+                } catch (err) {
+                    errorDiv.textContent = 'Invalid Theme: ' + err.message;
+                    errorDiv.style.display = 'block';
+                    submitBtn.disabled = true;
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        folderInput.onchange = async (e) => {
+            const files = Array.from(e.target.files);
+            nameLabel.textContent = files[0].webkitRelativePath.split('/')[0];
+
+            try {
+                const metaFile = files.find(f => f.name === 'metadata.json');
+                const scriptFile = files.find(f => f.name === 'script.js');
+                const thumbFile = files.find(f => /^thumbnail\.(png|jpe?g)$/i.test(f.name));
+
+                if (!metaFile || !scriptFile) {
+                    throw new Error('Missing metadata.json or script.js');
+                }
+
+                const [metaTxt, scriptTxt] = await Promise.all([
+                    metaFile.text(), scriptFile.text()
+                ]);
+
+                fileContent = scriptTxt;
+                validateAndSetMetadata(JSON.parse(metaTxt), false);
+
+                if (thumbFile) {
+                    const thumbReader = new FileReader();
+                    thumbReader.onload = (ev) => { thumbnailData = ev.target.result; };
+                    thumbReader.readAsDataURL(thumbFile);
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Invalid Plugin: ' + err.message;
+                errorDiv.style.display = 'block';
+                submitBtn.disabled = true;
+            }
+        };
+
+        submitBtn.onclick = async () => {
+            const descValue = descInput ? descInput.value.trim() : '';
+            if (!descValue) {
+                errorDiv.textContent = 'Description is required.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            if (descValue.length > 300) {
+                errorDiv.textContent = 'Description must be 300 characters or less.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            submitBtn.disabled = true;
+            DOMUpdater.render('<svg class="bh-spinner" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Submitting...', submitBtn);
+
+            try {
+                const telToken = localStorage.getItem('telemetry-token');
+                const resp = await fetch(CONFIG.MARKET.replace('/market', '/market/upload'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-telemetry-token': telToken
+                    },
+                    body: JSON.stringify({
+                        type: typeSelect.value,
+                        metadata: {
+                            ...fileMetadata,
+                            description: descValue
+                        },
+                        content: fileContent,
+                        thumbnail: thumbnailData
+                    })
+                });
+
+                const result = await resp.json();
+                if (resp.ok) {
+                    modal.remove();
+                    showToast('Successfully submitted for review!', 'success');
+
+                    state.market.currentSubTab = typeSelect.value.toLowerCase();
+                    state.market.currentPage = 1;
+                    fetchMarketData(1);
+                } else {
+                    if (resp.status === 401) {
+                        localStorage.removeItem('telemetry-token');
+                        localStorage.removeItem('telemetry-username');
+                        window.location.reload();
+                    }
+                    throw new Error(result.error || 'Upload failed');
+                }
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit for Review';
+            }
+        };
     }
     //
     async function installModule(id, type) {
@@ -24975,25 +26628,34 @@ input[type="checkbox"].file-select-cb,
         try {
             let itemData = null;
             const cacheKey = `bh-market-item-${type}-${id}`;
-            const cached = localStorage.getItem(cacheKey);
+            const cached = await AsyncCache.get(cacheKey);
 
             if (isTheme) {
                 if (cached) {
-                    itemData = JSON.parse(cached);
+                    if (typeof cached === 'string') {
+                        try { itemData = JSON.parse(cached); } catch (e) { itemData = cached; }
+                    } else {
+                        itemData = cached;
+                    }
                     for (let p = 20; p <= 100; p += 40) {
                         await new Promise(r => setTimeout(r, 100));
                         state.market.installProgress = p;
                         updateMarketUI();
                     }
                 } else {
-                    let response = await fetch(`${CONFIG.MARKET}/download/Themes/${id}`);
+                    const telToken = localStorage.getItem('telemetry-token');
+                    const headers = {};
+                    if (telToken && telToken !== 'null') {
+                        headers['Authorization'] = `Bearer ${telToken}`;
+                    }
+                    let response = await fetch(`${CONFIG.MARKET}/download/Themes/${id}`, { headers });
                     if (response.ok) {
                         let dataText = await response.text();
                         try {
                             let decoded = dataText;
                             try { decoded = decodeURIComponent(escape(atob(dataText))); } catch (e) { }
                             itemData = JSON.parse(decoded);
-                            localStorage.setItem(cacheKey, JSON.stringify(itemData));
+                            await AsyncCache.set(cacheKey, itemData);
                         } catch (e) {
                             BnLog('ERROR', 'Unable to parse theme:', e, dataText);
                             throw new Error('Invalid theme data format');
@@ -25012,7 +26674,7 @@ input[type="checkbox"].file-select-cb,
                     applyMarketTheme(id, itemData);
                 }
             } else {
-                const cachedCode = localStorage.getItem(`bh-plugin-code-${id}`);
+                const cachedCode = await AsyncCache.get(`bh-plugin-code-${id}`);
                 let pluginCode = cachedCode;
 
                 if (pluginCode) {
@@ -25022,10 +26684,15 @@ input[type="checkbox"].file-select-cb,
                         updateMarketUI();
                     }
                 } else {
-                    let response = await fetch(`${CONFIG.MARKET}/download/Plugins/${id}`);
+                    const telToken = localStorage.getItem('telemetry-token');
+                    const headers = {};
+                    if (telToken && telToken !== 'null') {
+                        headers['Authorization'] = `Bearer ${telToken}`;
+                    }
+                    let response = await fetch(`${CONFIG.MARKET}/download/Plugins/${id}`, { headers });
                     if (response.ok) {
                         pluginCode = await response.text();
-                        localStorage.setItem(`bh-plugin-code-${id}`, pluginCode);
+                        await AsyncCache.set(`bh-plugin-code-${id}`, pluginCode);
 
                         for (let p = 10; p <= 100; p += 20) {
                             await new Promise(r => setTimeout(r, 150));
@@ -25040,6 +26707,8 @@ input[type="checkbox"].file-select-cb,
                 if (pluginCode) {
                     const items = state.market.plugins;
                     const meta = items.find(i => i.id === id) || {};
+
+                    await AsyncCache.set(`bh-market-item-plugins-${id}`, meta);
 
                     const isMarketPlugin = type === 'plugins' && !!items.find(i => i.id === id);
                     if (!isMarketPlugin && !state.plugins.trustedPlugins.includes(id)) {
@@ -25120,6 +26789,11 @@ input[type="checkbox"].file-select-cb,
         if (data.themeBackgroundImage !== undefined) {
             state.settings.themeBackgroundImage = data.themeBackgroundImage;
             _ls.set('bh-theme-bg-image', data.themeBackgroundImage);
+        }
+
+        if (data.frost !== undefined) {
+            state.settings.frost = !!data.frost;
+            _ls.set('bh-frost', data.frost);
         }
 
         if (data.theme) {
@@ -25262,7 +26936,7 @@ input[type="checkbox"].file-select-cb,
 
         const overlay = document.createElement('div');
         overlay.className = 'theme-sweep-overlay';
-        overlay.innerHTML = '<div class="theme-sweep-line"></div>';
+        DOMUpdater.render('<div class="theme-sweep-line"></div>', overlay);
         document.body.appendChild(overlay);
 
         document.documentElement.classList.add('theme-morphing');
@@ -25292,7 +26966,8 @@ input[type="checkbox"].file-select-cb,
         const isIncompatible = isNewerVersion(item.version, CONFIG.SCRIPT_VERSION);
 
         const imgId = `preview-img-${type}-${item.id}`;
-        const thumbUrl = type === 'local' ? (item.thumbnail || '') : `${CONFIG.MARKET}/thumbnail/${type === 'themes' ? 'Themes' : 'Plugins'}/${item.id}`;
+        const isValidId = item.id && item.id !== 'null' && item.id !== 'undefined';
+        const thumbUrl = type === 'local' ? (item.thumbnail || '') : (isValidId ? `${CONFIG.MARKET}/thumbnail/${type === 'themes' ? 'Themes' : 'Plugins'}/${item.id}` : '');
 
         if (type === 'local' && item.thumbnail) {
             setTimeout(() => {
@@ -25308,8 +26983,12 @@ input[type="checkbox"].file-select-cb,
 
         const isTheme = type === 'themes';
         let prevBtnText, prevBtnClass, prevBtnDisabled;
-        if (isDownloading) {
-            prevBtnText = '<i class="fas fa-spinner fa-spin" style="margin-right: 0.5rem;"></i> Installing...';
+        if (item.pending) {
+            prevBtnText = '<i class="fas fa-clock" style="margin-right: 0.5rem;"></i> Pending Review';
+            prevBtnDisabled = true;
+            prevBtnClass = 'btn-outline';
+        } else if (isDownloading) {
+            prevBtnText = '<svg class="bh-spinner" style="margin-right: 0.5rem;" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg> Installing...';
             prevBtnDisabled = true;
             prevBtnClass = 'btn-primary';
         } else if (isIncompatible) {
@@ -25346,10 +27025,15 @@ input[type="checkbox"].file-select-cb,
 
         const modal = document.createElement('div');
         modal.className = 'bananaa-modal market-preview-modal';
-        modal.innerHTML = `
+        DOMUpdater.render(`
                 <div class="modal-overlay" onclick="this.parentElement.remove()"></div>
                 <div class="modal-container" style="max-width: 900px; padding: 0; overflow: hidden; background: #000;">
                     <div style="position: relative; width: 100%; aspect-ratio: 16/9; background: #111; overflow: hidden;">
+                        ${item.pending ? `
+                          <div style="position: absolute; inset: 0; background: rgba(30, 30, 30, 0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 5;">
+                            <span style="color: white; font-weight: 900; letter-spacing: 5px; font-size: 2rem; text-shadow: 0 4px 12px rgba(0,0,0,0.8);">PENDING REVIEW</span>
+                          </div>
+                        ` : ''}
                         <img id="${imgId}" src="${(type === 'local' ? item.thumbnail : imageCache.get(thumbUrl)) || ''}" style="width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.3s ease; opacity: ${(type === 'local' && item.thumbnail) || imageCache.has(thumbUrl) ? '1' : '0'};">
                         <button style="position: absolute; top: 1.5rem; right: 1.5rem; border: none; background: rgba(0,0,0,0.5); color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); z-index: 10; transition: all 0.2s;" onmouseover="this.style.background='var(--accent-error)'" onmouseout="this.style.background='rgba(0,0,0,0.5)'" onclick="this.closest('.bananaa-modal').remove()">
                             <i class="fas fa-times"></i>
@@ -25378,7 +27062,7 @@ input[type="checkbox"].file-select-cb,
                         </div>
                     </div>
                 </div>
-            `;
+            `, modal);
         document.body.appendChild(modal);
         setTimeout(() => modal.classList.add('visible'), 50);
     }
@@ -25407,7 +27091,18 @@ input[type="checkbox"].file-select-cb,
                     name: s.attributes.name
                 })))
             ],
-            getServerById: (id) => (state.controlPanel.servers || []).find(s => s.attributes?.identifier === id || s.attributes?.id == id),
+            getServerById: (id) => {
+                const all = [
+                    ...(state.controlPanel.servers || []),
+                    ...(state.controlPanel.sharedServers || [])
+                ];
+                return all.find(s =>
+                    (s.attributes?.identifier === id) ||
+                    (s.attributes?.id == id) ||
+                    (s.serverid === id) ||
+                    (s.identifier === id)
+                );
+            },
 
             addDashboardWidget: (widgetId, renderFn) => {
                 const fullId = `plugin-widget-${pluginId}-${widgetId}`;
@@ -25461,7 +27156,11 @@ input[type="checkbox"].file-select-cb,
             },
 
             refreshDashboard: () => {
-                if (typeof refreshUI === 'function') refreshUI(false);
+                if (typeof updateMainContent === 'function') {
+                    updateMainContent(false);
+                } else if (typeof refreshUI === 'function') {
+                    refreshUI(false);
+                }
             },
 
             storage: {
@@ -25514,8 +27213,56 @@ input[type="checkbox"].file-select-cb,
 
             log: (tag, msg, ...args) => BnLog(tag, msg, ...args),
 
+            createStore: (initialState) => {
+                if (!initialState || typeof initialState !== 'object' || Array.isArray(initialState)) {
+                    throw new Error('createStore: initialState must be a plain object');
+                }
+                return createReactiveStore(initialState);
+            },
+            dom: {
+                render: (html, target) => {
+                    if (typeof html !== 'string') throw new Error('dom.render: html must be a string');
+                    if (!(target instanceof HTMLElement)) throw new Error('dom.render: target must be an HTMLElement');
+                    DOMUpdater.render(html, target);
+                },
+                escapeHTML: (str) => escapeHTML(str),
+                sanitizeHTML: (str) => sanitizeHTML(str),
+            },
+            asyncStorage: {
+                _prefix: `plugin:${pluginId}:`,
+                _maxPluginKeyLen: 200,
+                _validatePluginKey(key) {
+                    if (typeof key !== 'string' || key.length === 0 || key.length > this._maxPluginKeyLen) {
+                        throw new Error(`asyncStorage: key must be a string (1-${this._maxPluginKeyLen} chars)`);
+                    }
+                },
+                async get(key) {
+                    this._validatePluginKey(key);
+                    return AsyncCache.get(this._prefix + key);
+                },
+                async set(key, value) {
+                    this._validatePluginKey(key);
+                    return AsyncCache.set(this._prefix + key, value);
+                },
+                async remove(key) {
+                    this._validatePluginKey(key);
+                    return AsyncCache.remove(this._prefix + key);
+                },
+                async keys() {
+                    const allKeys = await AsyncCache.keys();
+                    return allKeys
+                        .filter(k => typeof k === 'string' && k.startsWith(this._prefix))
+                        .map(k => k.slice(this._prefix.length));
+                },
+                async clear() {
+                    const pluginKeys = await this.keys();
+                    for (const k of pluginKeys) {
+                        await AsyncCache.remove(this._prefix + k);
+                    }
+                }
+            },
             CONFIG: { ...CONFIG },
-            getState: () => ({ ...state })
+            getState: () => state
         };
     }
 
@@ -25547,14 +27294,14 @@ input[type="checkbox"].file-select-cb,
         try {
             const content = renderFn();
             if (typeof content === 'string') {
-                wrapper.innerHTML = content;
+                DOMUpdater.render(content, wrapper);
             } else if (content instanceof HTMLElement) {
-                wrapper.innerHTML = '';
+                DOMUpdater.render('', wrapper);
                 wrapper.appendChild(content);
             }
         } catch (e) {
             BnLog('ERROR', `Plugin widget render error:`, e);
-            wrapper.innerHTML = `<div class="module-header"><h2><i class="fas fa-exclamation-triangle" style="color: var(--accent-error);"></i> Plugin Error</h2></div><div class="module-body" style="padding: 1rem;"><p style="color: var(--text-secondary);">Failed to render plugin widget.</p></div>`;
+            DOMUpdater.render(`<div class="module-header"><h2><i class="fas fa-exclamation-triangle" style="color: var(--accent-error);"></i> Plugin Error</h2></div><div class="module-body" style="padding: 1rem;"><p style="color: var(--text-secondary);">Failed to render plugin widget.</p></div>`, wrapper);
         }
 
         if (existing) {
@@ -25646,7 +27393,7 @@ input[type="checkbox"].file-select-cb,
             const name = escapeHTML(manifest.name || id);
             const author = escapeHTML(manifest.author || 'Unknown');
 
-            modal.innerHTML = `
+            DOMUpdater.render(`
       <div class="modal-overlay"></div>
              <div class="modal-container" style="max-width: 500px; border: 1px solid var(--border-light); background: var(--bg-primary) !important;">
         <div class="modal-header" style="margin: 0; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); background: var(--modal-tertiary-bg, var(--modal-bg-secondary)) !important;">
@@ -25679,7 +27426,7 @@ input[type="checkbox"].file-select-cb,
           <button class="btn btn-primary btn-trust" style="padding: 0.5rem 1.25rem; border-radius: 8px; background: var(--accent-warning); color: #000; font-weight: 700;">Trust & Enable</button>
            </div>
       </div>
-    `;
+    `, modal);
 
             document.body.appendChild(modal);
             void modal.offsetHeight;
@@ -25757,16 +27504,17 @@ input[type="checkbox"].file-select-cb,
 
         if (isLocal) {
             state.plugins.localPlugins = state.plugins.localPlugins.filter(p => p.id !== id);
-            _ls.set('bh-local-plugins', JSON.stringify(state.plugins.localPlugins));
-            localStorage.removeItem(`bh-market-item-plugins-${id}`);
+            const localForStorage1 = state.plugins.localPlugins.map(({ thumbnail, ...rest }) => rest);
+            _ls.set('bh-local-plugins', JSON.stringify(localForStorage1));
+            await AsyncCache.remove(`bh-market-item-plugins-${id}`);
         } else {
             state.market.installed[type] = state.market.installed[type].filter(i => i !== id);
             _ls.set('bh-installed-market', JSON.stringify(state.market.installed));
-            localStorage.removeItem(`bh-market-item-${type}-${id}`);
+            await AsyncCache.remove(`bh-market-item-${type}-${id}`);
         }
 
         if (!isTheme) {
-            localStorage.removeItem(`bh-plugin-code-${id}`);
+            await AsyncCache.remove(`bh-plugin-code-${id}`);
             const prefix = `bh-plugin-${id}-`;
             Object.keys(localStorage).filter(k => k.startsWith(prefix)).forEach(k => localStorage.removeItem(k));
         }
@@ -25805,7 +27553,7 @@ input[type="checkbox"].file-select-cb,
         modal.className = 'bananaa-modal visible';
         modal.style.zIndex = '11000';
 
-        modal.innerHTML = `
+        DOMUpdater.render(`
             <div class="modal-overlay" onclick="document.getElementById('bh-local-plugin-modal').remove()"></div>
             <div class="modal-container" style="max-width: 500px;">
                 <div class="modal-header">
@@ -25841,7 +27589,7 @@ input[type="checkbox"].file-select-cb,
                     <button class="btn btn-primary" id="btn-load-local" disabled>Load & Enable</button>
                 </div>
             </div>
-        `;
+        `, modal);
 
         document.body.appendChild(modal);
 
@@ -25908,9 +27656,9 @@ input[type="checkbox"].file-select-cb,
 
                 if (isIncompatible) {
                     thumbEl.style.border = '2px solid var(--accent-error)';
-                    document.getElementById('local-preview-name').innerHTML = `${parsedData.name} <span style="color: var(--accent-error); font-size: 0.7rem; vertical-align: middle;">[INCOMPATIBLE]</span>`;
+                    DOMUpdater.render(`${parsedData.name} <span style="color: var(--accent-error); font-size: 0.7rem; vertical-align: middle;">[INCOMPATIBLE]</span>`, document.getElementById('local-preview-name'));
                     document.getElementById('local-preview-author').innerText = `by ${parsedData.author}`;
-                    document.getElementById('local-preview-desc').innerHTML = `<b style="color: var(--accent-error);">Requires v${parsedData.version}</b> (Running v${CONFIG.SCRIPT_VERSION})<br>${parsedData.description}`;
+                    DOMUpdater.render(`<b style="color: var(--accent-error);">Requires v${parsedData.version}</b> (Running v${CONFIG.SCRIPT_VERSION})<br>${parsedData.description}`, document.getElementById('local-preview-desc'));
                 } else {
                     thumbEl.style.border = '1px solid var(--border-light)';
                     document.getElementById('local-preview-name').innerText = parsedData.name;
@@ -25919,9 +27667,9 @@ input[type="checkbox"].file-select-cb,
                 }
 
                 if (thumbnailData) {
-                    thumbEl.innerHTML = `<img src="${thumbnailData}" style="width: 100%; height: 100%; object-fit: cover;">`;
+                    DOMUpdater.render(`<img src="${thumbnailData}" style="width: 100%; height: 100%; object-fit: cover;">`, thumbEl);
                 } else {
-                    thumbEl.innerHTML = `<i class="fas fa-plug" style="font-size: 1.5rem; opacity: 0.3;"></i>`;
+                    DOMUpdater.render(`<i class="fas fa-plug" style="font-size: 1.5rem; opacity: 0.3;"></i>`, thumbEl);
                 }
 
                 uploadZone.style.display = 'none';
@@ -25959,20 +27707,11 @@ input[type="checkbox"].file-select-cb,
             if (!trusted) return;
 
             try {
-                localStorage.setItem(`bh-plugin-code-${id}`, parsedData.code);
-                localStorage.setItem(`bh-market-item-plugins-${id}`, JSON.stringify(manifest));
+                await AsyncCache.set(`bh-plugin-code-${id}`, parsedData.code);
+                await AsyncCache.set(`bh-market-item-plugins-${id}`, manifest);
             } catch (err) {
-                if (err.name === 'QuotaExceededError') {
-                    if (window.__bh_gcImageCache) window.__bh_gcImageCache(true);
-                    try {
-                        localStorage.setItem(`bh-plugin-code-${id}`, parsedData.code);
-                        localStorage.setItem(`bh-market-item-plugins-${id}`, JSON.stringify(manifest));
-                    } catch (retryErr) {
-                        return window.showToast('Storage quota exceeded. Try uninstalling some plugins or themes.', 'error');
-                    }
-                } else {
-                    return window.showToast('Failed to save & load plugin.', 'error');
-                }
+                BnLog('ERROR', 'Failed to save plugin to AsyncCache:', err);
+                return window.showToast('Failed to save & load plugin.', 'error');
             }
 
             const existingIdx = state.plugins.localPlugins.findIndex(p => p.id === id);
@@ -25981,7 +27720,8 @@ input[type="checkbox"].file-select-cb,
             } else {
                 state.plugins.localPlugins.push({ id, ...manifest });
             }
-            _ls.set('bh-local-plugins', JSON.stringify(state.plugins.localPlugins));
+            const localForStorage2 = state.plugins.localPlugins.map(({ thumbnail, ...rest }) => rest);
+            _ls.set('bh-local-plugins', JSON.stringify(localForStorage2));
 
             if (!state.plugins.trustedPlugins.includes(id)) {
                 state.plugins.trustedPlugins.push(id);
@@ -26004,26 +27744,32 @@ input[type="checkbox"].file-select-cb,
         };
     }
 
-    function autoLoadPlugins() {
+    async function autoLoadPlugins() {
         const activeIds = state.plugins.activePlugins;
         if (!activeIds.length) return;
 
-        activeIds.forEach(id => {
+        for (const id of activeIds) {
             if (!state.plugins.trustedPlugins.includes(id)) {
                 BnLog('ERROR', `Active plugin ${id} is NOT trusted. Skipping auto-load.`);
-                return;
+                continue;
             }
 
-            const code = localStorage.getItem(`bh-plugin-code-${id}`);
+            const code = await AsyncCache.get(`bh-plugin-code-${id}`);
             if (code) {
-                const metaRaw = localStorage.getItem(`bh-market-item-plugins-${id}`);
+                const meta = await AsyncCache.get(`bh-market-item-plugins-${id}`);
                 let manifest = {};
-                try { manifest = metaRaw ? JSON.parse(metaRaw) : {}; } catch (e) { }
+                if (meta) {
+                    if (typeof meta === 'string') {
+                        try { manifest = JSON.parse(meta); } catch (e) { }
+                    } else {
+                        manifest = meta;
+                    }
+                }
                 loadPlugin(id, code, manifest);
             } else {
                 console.warn(`[PluginManager] No cached code for ${id}, skipping auto-load`);
             }
-        });
+        }
     }
 
     // END PLUGINN FRAMEWORK
@@ -26053,9 +27799,10 @@ input[type="checkbox"].file-select-cb,
         window.updateCoinCollectorUI = updateCoinCollectorUI;
         window.updateMainContent = updateMainContent;
     }
+    checkTelemetryRedirect();
 })();
 // all hail the spaghetti!!
 // Termux Labs 2026 - @agentzzrp (relentiousdragon), @paccman_0 on Discord
 // Shoutout to every early adopter, everyone who suggested, reported a bug, or gave feedback!
 // If you're confused by a function or something, send me a DM on Discord @agentzzrp, if i'm unavailable, dm @paccman_0 instead but only for plugin framework related stuff.
-////////////////////////
+/////////////////////////
