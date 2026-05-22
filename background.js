@@ -34,7 +34,7 @@ class ScriptManager {
         const override = await this.isOverrideSRCEnabled();
         const showAds = await this.getFromStorage('showAds', true) !== false;
         const joinSupportServer = await this.getFromStorage('joinSupportServer', false) !== false;
-        
+
         if (enabled && override) {
             const noDiscordServerJoin = !joinSupportServer ? {
                 id: 20,
@@ -432,7 +432,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 });
             });
             return true;
-            
+
         case 'setEnabled':
             scriptManager.setEnabled(request.enabled).then(() => {
                 sendResponse({ success: true });
