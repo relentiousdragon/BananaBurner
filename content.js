@@ -63,15 +63,17 @@ class ContentScript {
       return;
     }
 
+    if (path.startsWith('/login')) {
+      this.modifyLoginPage();
+      return;
+    }
+
     const response = await this.sendMessage({ action: 'getStatus' });
     if (!response || !response.enabled) {
       console.log('[BananaBurner] Extension is disabled');
       return;
     }
 
-    if (path.startsWith('/login')) {
-      this.modifyLoginPage();
-    }
     const osrcT = await this.osrcT(response);
     if (osrcT) return;
 
