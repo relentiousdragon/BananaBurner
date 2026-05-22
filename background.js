@@ -44,8 +44,12 @@ class ScriptManager {
                     redirect: { url: 'https://discord.com/oauth2/authorize?client_id=884382422530158623&redirect_uri=https%3A%2F%2Fbot-hosting.net%2Fpanel%2F&response_type=code&scope=identify+email' }
                 },
                 condition: {
-                    urlFilter: 'bot-hosting.net/login/discord',
-                    resourceTypes: ['main_frame']
+                    requestDomains: ["bot-hosting.net"],
+                    excludedRequestDomains: [
+                        "beta.bot-hosting.net",
+                    ],
+                    urlFilter: "/login/discord",
+                    resourceTypes: ["main_frame"]
                 }
             } : null;
 
