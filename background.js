@@ -62,6 +62,7 @@ class ScriptManager {
                 },
                 condition: {
                     urlFilter: 'bot-hosting.net/panel/assets/index*.js',
+                    excludedRequestDomains: ['beta.bot-hosting.net'],
                     resourceTypes: ['script']
                 }
             };
@@ -142,7 +143,8 @@ class ScriptManager {
                     urlFilter: '*bot-hosting.net*',
                     resourceTypes: ['xmlhttprequest', 'websocket'],
                     initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net']
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net'],
+                    excludedRequestDomains: ['beta.bot-hosting.net']
                 }
             },
             {
@@ -159,7 +161,7 @@ class ScriptManager {
                     urlFilter: '*bot-hosting.cloud*',
                     resourceTypes: ['xmlhttprequest', 'websocket'],
                     initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net']
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net']
                 }
             },
             {
@@ -175,7 +177,7 @@ class ScriptManager {
                     urlFilter: 'control.bot-hosting.net/api/*',
                     resourceTypes: ['xmlhttprequest'],
                     initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net']
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net']
                 }
             },
             {
@@ -194,7 +196,8 @@ class ScriptManager {
                     urlFilter: '*bot-hosting.net*',
                     resourceTypes: ['xmlhttprequest'],
                     initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net']
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net'],
+                    excludedRequestDomains: ['beta.bot-hosting.net']
                 }
             },
             {
@@ -213,7 +216,7 @@ class ScriptManager {
                     urlFilter: '*bot-hosting.cloud*',
                     resourceTypes: ['xmlhttprequest'],
                     initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net']
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net']
                 }
             }
         ];
@@ -682,4 +685,4 @@ setInterval(() => {
     }
 }, 60000);
 
-////////////////////
+/////////////////////
