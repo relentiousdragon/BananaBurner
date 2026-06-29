@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BananaBurner 2979
 // @namespace    https://github.com/relentiousdragon/BananaBurner/
-// @version      2026-05-22
+// @version      2026-06-29
 // @description  BANANNANAANANAAAAAA
 // @author       Termux Labs
 // @match        https://bot-hosting.net/panel/*
