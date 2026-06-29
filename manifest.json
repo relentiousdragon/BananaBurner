@@ -60,7 +60,7 @@
         "icons/*"
       ],
       "matches": [
-        "https://legacybot-hosting.net/*",
+        "https://legacy.bot-hosting.net/*",
         "https://control.bot-hosting.net/*",
         "https://bot-hosting.cloud/*",
         "https://control.bot-hosting.cloud/*"
