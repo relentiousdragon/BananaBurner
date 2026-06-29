@@ -41,12 +41,12 @@ class ScriptManager {
                 priority: 10,
                 action: {
                     type: 'redirect',
-                    redirect: { url: 'https://discord.com/oauth2/authorize?client_id=884382422530158623&redirect_uri=https%3A%2F%2Fbot-hosting.net%2Fpanel%2F&response_type=code&scope=identify+email' }
+                    redirect: { url: 'https://discord.com/oauth2/authorize?client_id=884382422530158623&redirect_uri=https%3A%2F%2Flegacy.bot-hosting.net%2Fpanel%2F&response_type=code&scope=identify+email' }
                 },
                 condition: {
-                    requestDomains: ["bot-hosting.net"],
+                    requestDomains: ["legacy.bot-hosting.net"],
                     excludedRequestDomains: [
-                        "beta.bot-hosting.net",
+                        "bot-hosting.net",
                     ],
                     urlFilter: "/login/discord",
                     resourceTypes: ["main_frame"]
@@ -61,8 +61,8 @@ class ScriptManager {
                     redirect: { extensionPath: '/injected.js' }
                 },
                 condition: {
-                    urlFilter: 'bot-hosting.net/panel/assets/index*.js',
-                    excludedRequestDomains: ['beta.bot-hosting.net'],
+                    urlFilter: 'legacy.bot-hosting.net/panel/assets/index*.js',
+                    excludedRequestDomains: ['bot-hosting.net'],
                     resourceTypes: ['script']
                 }
             };
@@ -72,37 +72,33 @@ class ScriptManager {
                     id: 10,
                     priority: 1,
                     action: { type: 'block' },
-                    condition: { urlFilter: '*nitropay.com*', resourceTypes: ['script', 'sub_frame'] }
+                    condition: { urlFilter: '*nitropay.com*', resourceTypes: ['script', 'sub_frame'],  initiatorDomains: [
+      "legacy.bot-hosting.net"
+    ] }
                 } : null,
-                {
-                    id: 11,
-                    priority: 1,
-                    action: { type: 'block' },
-                    condition: { urlFilter: '*googletagmanager.com*', resourceTypes: ['script'] }
-                },
-                {
-                    id: 12,
-                    priority: 1,
-                    action: { type: 'block' },
-                    condition: { urlFilter: '*cloudflareinsights.com*', resourceTypes: ['script'] }
-                },
                 {
                     id: 13,
                     priority: 1,
                     action: { type: 'block' },
-                    condition: { urlFilter: '*sweetalert*', resourceTypes: ['script', 'stylesheet'] }
+                    condition: { urlFilter: '*sweetalert*', resourceTypes: ['script', 'stylesheet'], initiatorDomains: [
+      "legacy.bot-hosting.net"
+    ] }
                 },
                 {
                     id: 14,
                     priority: 1,
                     action: { type: 'block' },
-                    condition: { urlFilter: '*simplemde*', resourceTypes: ['script', 'stylesheet'] }
+                    condition: { urlFilter: '*simplemde*', resourceTypes: ['script', 'stylesheet'], initiatorDomains: [
+      "legacy.bot-hosting.net"
+    ] }
                 },
                 {
                     id: 15,
                     priority: 1,
                     action: { type: 'block' },
-                    condition: { urlFilter: '*bttn.css*', resourceTypes: ['stylesheet'] }
+                    condition: { urlFilter: '*bttn.css*', resourceTypes: ['stylesheet'], initiatorDomains: [
+      "legacy.bot-hosting.net"
+    ] },
                 }
             ].filter(Boolean);
 
@@ -140,11 +136,11 @@ class ScriptManager {
                     ]
                 },
                 condition: {
-                    urlFilter: '*bot-hosting.net*',
+                    urlFilter: '*legacy.bot-hosting.net*',
                     resourceTypes: ['xmlhttprequest', 'websocket'],
-                    initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net'],
-                    excludedRequestDomains: ['beta.bot-hosting.net']
+                    initiatorDomains: ['legacy.bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'bot-hosting.net'],
+                    excludedRequestDomains: ['bot-hosting.net']
                 }
             },
             {
@@ -160,8 +156,8 @@ class ScriptManager {
                 condition: {
                     urlFilter: '*bot-hosting.cloud*',
                     resourceTypes: ['xmlhttprequest', 'websocket'],
-                    initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net']
+                    initiatorDomains: ['legacy.bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'bot-hosting.net']
                 }
             },
             {
@@ -176,8 +172,8 @@ class ScriptManager {
                 condition: {
                     urlFilter: 'control.bot-hosting.net/api/*',
                     resourceTypes: ['xmlhttprequest'],
-                    initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net']
+                    initiatorDomains: ['legacy.bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'bot-hosting.net']
                 }
             },
             {
@@ -186,7 +182,7 @@ class ScriptManager {
                 action: {
                     type: 'modifyHeaders',
                     responseHeaders: [
-                        { header: 'Access-Control-Allow-Origin', operation: 'set', value: 'https://bot-hosting.net' },
+                        { header: 'Access-Control-Allow-Origin', operation: 'set', value: 'https://legacy.bot-hosting.net' },
                         { header: 'Access-Control-Allow-Methods', operation: 'set', value: 'GET, POST, PUT, DELETE, OPTIONS' },
                         { header: 'Access-Control-Allow-Headers', operation: 'set', value: '*' },
                         { header: 'Access-Control-Allow-Credentials', operation: 'set', value: 'true' }
@@ -195,9 +191,9 @@ class ScriptManager {
                 condition: {
                     urlFilter: '*bot-hosting.net*',
                     resourceTypes: ['xmlhttprequest'],
-                    initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net'],
-                    excludedRequestDomains: ['beta.bot-hosting.net']
+                    initiatorDomains: ['legacy.bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'bot-hosting.net'],
+                    excludedRequestDomains: ['bot-hosting.net']
                 }
             },
             {
@@ -206,7 +202,7 @@ class ScriptManager {
                 action: {
                     type: 'modifyHeaders',
                     responseHeaders: [
-                        { header: 'Access-Control-Allow-Origin', operation: 'set', value: 'https://bot-hosting.net' },
+                        { header: 'Access-Control-Allow-Origin', operation: 'set', value: 'https://legacy.bot-hosting.net' },
                         { header: 'Access-Control-Allow-Methods', operation: 'set', value: 'GET, POST, PUT, DELETE, OPTIONS' },
                         { header: 'Access-Control-Allow-Headers', operation: 'set', value: '*' },
                         { header: 'Access-Control-Allow-Credentials', operation: 'set', value: 'true' }
@@ -215,8 +211,8 @@ class ScriptManager {
                 condition: {
                     urlFilter: '*bot-hosting.cloud*',
                     resourceTypes: ['xmlhttprequest'],
-                    initiatorDomains: ['bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net', 'beta.bot-hosting.net']
+                    initiatorDomains: ['legacy.bot-hosting.net'],
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'bot-hosting.net']
                 }
             }
         ];
@@ -544,7 +540,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         'cdn.discordapp.com',
                         'github.com',
                         'raw.githubusercontent.com',
-                        'livestatustracker.com',
+                        'status.bot-hosting.net',
                         'featurebase.app'
                     ];
 
@@ -618,7 +614,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         'cdn.discordapp.com',
                         'github.com',
                         'raw.githubusercontent.com',
-                        'livestatustracker.com',
+                        'status.bot-hosting.net',
                         'featurebase.app'
                     ];
 
