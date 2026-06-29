@@ -81,12 +81,12 @@ class PopupManager {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       this.currentTab = tab;
 
-      if (tab.url && tab.url.includes('bot-hosting.net/panel')) {
+      if (tab.url && tab.url.includes('legacy.bot-hosting.net/panel')) {
         this.elements.siteIndicator.className = 'site-indicator on-site';
         this.elements.siteStatus.textContent = 'On Bot-Hosting panel';
       } else {
         this.elements.siteIndicator.className = 'site-indicator off-site';
-        this.elements.siteStatus.textContent = 'Not on Bot-Hosting panel';
+        this.elements.siteStatus.textContent = 'Not on Legacy Bot-Hosting panel';
       }
     } catch (error) {
       console.error('Failed to check current tab:', error);
@@ -166,4 +166,4 @@ class PopupManager {
 document.addEventListener('DOMContentLoaded', () => {
   new PopupManager();
 });
-//////////////////
+///////////////////
