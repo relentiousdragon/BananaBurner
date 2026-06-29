@@ -9,7 +9,7 @@
         const isSafeMode = new URLSearchParams(window.location.search).get('safeMode') === 'true';
         const OSRC_ENABLED = localStorage.getItem('OSRC') === 'true';
         const OTA_PREF = localStorage.getItem('bh-ota-version') || 'Latest > Bundled';
-        const BUNDLED_VERSION = '3.7';
+        const BUNDLED_VERSION = '3.8';
 
         if (isSafeMode) {
             console.log('[BananaBurner] Safe Mode active, running bundled version.');
@@ -128,14 +128,14 @@
     }
     //
     let CONFIG = {
-        SCRIPT_VERSION: '3.7', // *
+        SCRIPT_VERSION: '3.8', // *
         FAVICON_URL: 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon48.png', // ?
         MAX_COINS_PER_DAY: 10, // *
         NORMAL_COIN_INTERVAL: 10000, // ?
         CAPTCHA_COIN_INTERVAL: 12000, // ?
         HCAPTCHA_SITEKEY: '21335a07-5b97-4a79-b1e9-b197dc35017a', // *
-        UPTIME_MONITOR: 'https://monitor.livestatustracker.com/', // ?
-        CONTROL_PANEL_STATUS: 'https://monitor.livestatustracker.com/status/control', // !
+        UPTIME_MONITOR: 'https://status.bot-hosting.net/', // ?
+        CONTROL_PANEL_STATUS: 'https://status.bot-hosting.net/monitor/control', // !
         WIKI_URL: 'https://bot-hosting-net.gitbook.io/bot-hosting.net', // ?
         MAX_QUICK_ACTIONS: 9, // ?
         DEBUG: localStorage.getItem('bh-debug') ? localStorage.getItem('bh-debug') === 'true' : false, // *
@@ -209,7 +209,7 @@
 
         if (code && osrc) {
             try {
-                const response = await fetch('https://bot-hosting.net/api/login', {
+                const response = await fetch('https://legacy.bot-hosting.net/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ code, affiliate })
@@ -225,7 +225,7 @@
                 }
             } catch (e) {
                 BnLog('ERROR', 'Bot-Hosting login failed:', e);
-                window.location.href = 'https://bot-hosting.net/login';
+                window.location.href = 'https://legacy.bot-hosting.net/login';
             }
         }
     }
@@ -1367,11 +1367,11 @@
                 const clone = response.clone();
                 const body = await clone.json();
                 if (body.error && body.message === 'Invalid authorization header.') {
-                    window.location.href = 'https://bot-hosting.net/login';
+                    window.location.href = 'https://legacy.bot-hosting.net/login';
                     return response;
                 }
                 if (!tolkien) {
-                    window.location.href = 'https://bot-hosting.net/login';
+                    window.location.href = 'https://legacy.bot-hosting.net/login';
                     return;
                 }
             } catch (e) {
@@ -7784,7 +7784,7 @@ debug:
                                 localStorage.removeItem('token');
                                 localStorage.removeItem('telemetry-token');
                                 localStorage.removeItem('telemetry-user-id');
-                                location.href = 'https://bot-hosting.net/login';
+                                location.href = 'https://legacy.bot-hosting.net/login';
                             }
                         }
                     }
@@ -11508,7 +11508,7 @@ ${otaOptionsHTML}
 
     async function submitChangePlan(serverId, newPlan, newBilling) {
         try {
-            const res = await fetchWithRetry('https://bot-hosting.net/api/servers/changePlan', {
+            const res = await fetchWithRetry('https://legacybot-hosting.net/api/servers/changePlan', {
                 method: 'POST',
                 headers: {
                     ...getHeaders(),
@@ -11558,7 +11558,7 @@ ${otaOptionsHTML}
 
     async function submitDeleteServer(serverId) {
         try {
-            const res = await fetchWithRetry('https://bot-hosting.net/api/servers/delete', {
+            const res = await fetchWithRetry('https://legacy.bot-hosting.net/api/servers/delete', {
                 method: 'POST',
                 headers: {
                     ...getHeaders(),
@@ -11595,7 +11595,7 @@ ${otaOptionsHTML}
 
     async function submitChangeSoftware(serverId, eggId) {
         try {
-            const res = await fetchWithRetry('https://bot-hosting.net/api/servers/changeSoftware', {
+            const res = await fetchWithRetry('https://legacy.bot-hosting.net/api/servers/changeSoftware', {
                 method: 'POST',
                 headers: {
                     ...getHeaders(),
@@ -14481,7 +14481,7 @@ ${otaOptionsHTML}
 
     function renderSidebarStateMessage(panelBody, state, details) {
         const attrs = details.attributes || details;
-        const node = attrs.node ? `https://monitor.livestatustracker.com/status/${attrs.node}` : 'https://monitor.livestatustracker.com/';
+        const node = attrs.node ? `https://status.bot-hosting.net/monitor/${attrs.node}` : 'https://status.bot-hosting.net/';
 
         let content = '';
 
@@ -19385,7 +19385,7 @@ ignite();
         const bhToken = localStorage.getItem('token');
         const isBHCallback = urlParamsAtStart.has('code');
         if (!bhToken && !isBHCallback) {
-            window.location.href = 'https://bot-hosting.net/login';
+            window.location.href = 'https://legacy.bot-hosting.net/login';
             return;
         }
 
@@ -27805,4 +27805,4 @@ input[type="checkbox"].file-select-cb,
 // Termux Labs 2026 - @agentzzrp (relentiousdragon), @paccman_0 on Discord
 // Shoutout to every early adopter, everyone who suggested, reported a bug, or gave feedback!
 // If you're confused by a function or something, send me a DM on Discord @agentzzrp, if i'm unavailable, dm @paccman_0 instead but only for plugin framework related stuff.
-/////////////////////////
+//////////////////////////
