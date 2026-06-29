@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BananaBurner 2979",
-  "version": "2979.1.4",
+  "version": "2979.1.5",
   "description": "MORE BANANAAAAA!11!",
   "permissions": [
     "activeTab",
@@ -15,7 +15,7 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://bot-hosting.net/*",
+    "https://legacy.bot-hosting.net/*",
     "https://*.bot-hosting.net/*",
     "wss://*.bot-hosting.net/*",
     "https://bot-hosting.cloud/*",
@@ -32,8 +32,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://bot-hosting.net/panel*",
-        "https://bot-hosting.net/login*"
+        "https://legacy.bot-hosting.net/panel*",
+        "https://legacy.bot-hosting.net/login*"
       ],
       "js": [
         "content.js"
@@ -60,7 +60,7 @@
         "icons/*"
       ],
       "matches": [
-        "https://bot-hosting.net/*",
+        "https://legacybot-hosting.net/*",
         "https://control.bot-hosting.net/*",
         "https://bot-hosting.cloud/*",
         "https://control.bot-hosting.cloud/*"
