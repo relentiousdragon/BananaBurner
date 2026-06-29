@@ -62,7 +62,7 @@ class ScriptManager {
                 },
                 condition: {
                     urlFilter: 'legacy.bot-hosting.net/panel/assets/index*.js',
-                    excludedRequestDomains: ['bot-hosting.net'],
+requestDomains: ["legacy.bot-hosting.net"],
                     resourceTypes: ['script']
                 }
             };
