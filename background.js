@@ -609,6 +609,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     const hostname = targetUrl.hostname;
                     const allowedDomains = [
                         'bot-hosting.net',
+                        'legacy.bot-hosting.net',
                         'bot-hosting.cloud',
                         'discord.com',
                         'cdn.discordapp.com',
@@ -681,4 +682,4 @@ setInterval(() => {
     }
 }, 60000);
 
-/////////////////////
+//////////////////////
