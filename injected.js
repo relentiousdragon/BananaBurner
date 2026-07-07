@@ -11508,7 +11508,7 @@ ${otaOptionsHTML}
 
     async function submitChangePlan(serverId, newPlan, newBilling) {
         try {
-            const res = await fetchWithRetry('https://legacybot-hosting.net/api/servers/changePlan', {
+            const res = await fetchWithRetry('https://legacy.bot-hosting.net/api/servers/changePlan', {
                 method: 'POST',
                 headers: {
                     ...getHeaders(),
