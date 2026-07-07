@@ -9,7 +9,7 @@
         const isSafeMode = new URLSearchParams(window.location.search).get('safeMode') === 'true';
         const OSRC_ENABLED = localStorage.getItem('OSRC') === 'true';
         const OTA_PREF = localStorage.getItem('bh-ota-version') || 'Latest > Bundled';
-        const BUNDLED_VERSION = '3.8';
+        const BUNDLED_VERSION = '3.9';
 
         if (isSafeMode) {
             console.log('[BananaBurner] Safe Mode active, running bundled version.');
@@ -128,7 +128,7 @@
     }
     //
     let CONFIG = {
-        SCRIPT_VERSION: '3.8', // *
+        SCRIPT_VERSION: '3.9', // *
         FAVICON_URL: 'https://raw.githubusercontent.com/relentiousdragon/BananaBurner/refs/heads/main/icons/icon48.png', // ?
         MAX_COINS_PER_DAY: 10, // *
         NORMAL_COIN_INTERVAL: 10000, // ?
@@ -27805,4 +27805,4 @@ input[type="checkbox"].file-select-cb,
 // Termux Labs 2026 - @agentzzrp (relentiousdragon), @paccman_0 on Discord
 // Shoutout to every early adopter, everyone who suggested, reported a bug, or gave feedback!
 // If you're confused by a function or something, send me a DM on Discord @agentzzrp, if i'm unavailable, dm @paccman_0 instead but only for plugin framework related stuff.
-//////////////////////////
+///////////////////////////
