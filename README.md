@@ -1,5 +1,5 @@
-# Extension Version: 2979.1.5
-# Script Version: 3.8
+# Extension Version: 2979.1.6
+# Script Version: 3.9
 
 # DISCONTINUED, works on legacy.bot-hosting.net but will not receive any future updates.
 
