@@ -136,11 +136,10 @@ requestDomains: ["legacy.bot-hosting.net"],
                     ]
                 },
                 condition: {
-                    urlFilter: '*legacy.bot-hosting.net*',
+                    urlFilter: '*bot-hosting.net*',
                     resourceTypes: ['xmlhttprequest', 'websocket'],
                     initiatorDomains: ['legacy.bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net', 'bot-hosting.net'],
-                    excludedRequestDomains: ['bot-hosting.net']
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'bot-hosting.net']
                 }
             },
             {
@@ -192,8 +191,7 @@ requestDomains: ["legacy.bot-hosting.net"],
                     urlFilter: '*bot-hosting.net*',
                     resourceTypes: ['xmlhttprequest'],
                     initiatorDomains: ['legacy.bot-hosting.net'],
-                    excludedInitiatorDomains: ['control.bot-hosting.net', 'bot-hosting.net'],
-                    excludedRequestDomains: ['bot-hosting.net']
+                    excludedInitiatorDomains: ['control.bot-hosting.net', 'bot-hosting.net']
                 }
             },
             {
@@ -682,4 +680,4 @@ setInterval(() => {
     }
 }, 60000);
 
-//////////////////////
+/////////////////////
